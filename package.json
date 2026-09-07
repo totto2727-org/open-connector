@@ -12,8 +12,8 @@
     "build": "npm run typecheck",
     "build:web": "npm run build --workspace web",
     "build:binary": "npm run generate:catalog && npm run build:web && bun scripts/build-binary.ts",
-    "dev:cloudflare": "npm run generate:catalog && npm run build:web && node scripts/copy-catalog-assets.ts && wrangler dev --config wrangler.local.jsonc",
-    "deploy:cloudflare": "npm run generate:catalog && npm run build:web && node scripts/copy-catalog-assets.ts && wrangler deploy --config wrangler.local.jsonc --minify",
+    "dev:cloudflare": "npm run generate:catalog && npm run build:web && node scripts/copy-catalog-assets.ts && wrangler dev",
+    "deploy:cloudflare": "npm run generate:catalog && npm run build:web && node scripts/copy-catalog-assets.ts && wrangler deploy --minify",
     "start": "node scripts/ensure-generated.ts && node src/server/index.ts",
     "test": "vitest run",
     "typecheck": "npm run generate:registry && node scripts/typecheck.ts",
@@ -81,5 +81,12 @@
     "esbuild@0.28.1": true,
     "sharp@0.34.5": true,
     "workerd@1.20260630.1": true
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "npm",
+      "version": "12.0.2",
+      "onFail": "download"
+    }
   }
 }
