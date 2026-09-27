@@ -110,6 +110,27 @@
     "noRecentCallsDescription": "运行一个操作后会显示提供商调用次数。"
   },
   "marketplace": {
+    "default": {
+      "browseDescription": "浏览可用功能",
+      "title": "官方应用",
+      "description": "由 OOMOL Marketplace 提供，连接官方 API Key 后可用。",
+      "failed": "官方目录暂时无法加载，请稍后重试。",
+      "retry": "重试",
+      "loading": "正在加载官方应用…",
+      "empty": "暂无与当前版本兼容的官方应用",
+      "view": "查看功能",
+      "disconnected": "尚未连接",
+      "descriptions": {
+        "kling": "视频生成",
+        "minimax": "AI 创作服务",
+        "seedance": "视频生成"
+      },
+      "offers": {
+        "kling": "7 折",
+        "minimax": "8 折",
+        "seedance": "9 折"
+      }
+    },
     "summary": {
       "title": "Connector Marketplace",
       "description": "为当前 Connector 运行时提供托管的服务访问能力。",
@@ -119,12 +140,14 @@
     "status": { "disabled": "未启用", "available": "可用", "unavailable": "不可用", "auth_error": "鉴权失败" },
     "pricing": { "free": "免费", "metered": "按量计费" },
     "configuration": {
+      "reconnect": "当前来源尚未就绪，请在上方检查配置并重新验证。",
       "title": "连接配置",
       "description": "将当前运行时连接到一个 Marketplace discovery endpoint。",
       "configured": "已配置",
       "discoveryUrl": "Discovery URL",
       "discoveryHelp": "保存时会获取并验证该 discovery 文档。",
       "apiKey": "API Key",
+      "getDefaultKey": "获取 OOMOL 官方 API Key",
       "apiKeyPlaceholder": "输入 Marketplace API Key",
       "keepCurrentKey": "留空以保留当前 Key",
       "apiKeyHelp": "配置运行时加密密钥后，该值会加密存储。",
@@ -159,15 +182,15 @@
   "providers": {
     "catalogTitle": "提供商",
     "viewLabel": "提供商视图",
-    "views": { "manage": "我的连接", "discover": "发现应用" },
+    "views": { "manage": "我的连接", "discover": "全部应用" },
     "discovery": {
       "browseByTask": "按任务浏览",
       "explore": "浏览应用",
       "scenarios": {
         "ai": { "title": "AI 与 Agent", "description": "模型、Agent、检索与媒体生成" },
+        "investment": { "title": "投资与交易", "description": "股票、加密资产、行情、持仓和交易记录" },
         "crossBorderEcommerce": { "title": "电商运营", "description": "店铺、订单、履约与市场数据" },
-        "communication": { "title": "团队协作", "description": "消息、邮件、会议与通知" },
-        "docs": { "title": "文档与知识", "description": "文档、知识库、网盘与表格" },
+        "communication": { "title": "协作与知识", "description": "消息、邮件、会议、文档、云盘和知识库" },
         "productivity": { "title": "项目与效率", "description": "项目、任务、日程与自动化" },
         "marketing": { "title": "营销与增长", "description": "广告、内容、线索与增长数据" },
         "dataStorage": { "title": "数据与分析", "description": "数据仓库、数据库、BI 与存储" },
@@ -180,6 +203,7 @@
     "filters": {
       "all": "全部",
       "connected": "已连接",
+      "noSetup": "免配置",
       "notConnected": "未连接",
       "oauthNeedsConfig": "OAuth 待配置"
     },
@@ -581,5 +605,13 @@
       "title": "OpenAPI JSON",
       "description": "在脚本或工具导入器中使用生成的规格。"
     }
+  },
+  "hostedPromo": {
+    "title": "欢迎使用 Open Connector",
+    "headline": "一个 Key，开始 AI 创作",
+    "description": "使用 Kling、Seedance、MiniMax 等模型生成图像与视频",
+    "offer": "部分模型低至 7 折",
+    "cta": "获取 API Key",
+    "dismiss": "关闭，不再显示"
   }
 }

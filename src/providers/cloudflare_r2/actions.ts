@@ -2,11 +2,14 @@ import type { ActionDefinition, JsonSchema } from "../../core/types.ts";
 
 import { s } from "../../core/json-schema.ts";
 import { defineProviderAction } from "../../core/provider-definition.ts";
+import { cloudflareR2AccountActions } from "./actions-account.ts";
+import { cloudflareR2BucketSettingsActions } from "./actions-bucket-settings.ts";
+import { cloudflareR2DomainActions } from "./actions-domains.ts";
+import { cloudflareR2EventNotificationActions } from "./actions-event-notifications.ts";
+import { cloudflareR2ObjectActions } from "./actions-objects.ts";
+import { cloudflareR2Jurisdictions } from "./schemas.ts";
 
 const service = "cloudflare_r2";
-
-/** The jurisdictions R2 accepts in the `cf-r2-jurisdiction` header and in the S3 endpoint host. */
-export const cloudflareR2Jurisdictions = ["default", "eu", "fedramp", "us"] as const;
 
 const r2ReadScope = "workers-r2.read";
 const r2WriteScope = "workers-r2.write";
@@ -112,9 +115,10 @@ const updateBucketInputSchema = s.object(
 ) as JsonSchema;
 updateBucketInputSchema.anyOf = [{ required: ["storageClass"] }, { required: ["jurisdiction"] }];
 
-export const cloudflareR2Actions: ActionDefinition[] = [
+const cloudflareR2CoreActions: ActionDefinition[] = [
   defineProviderAction(service, {
     name: "list_accounts",
+    operationType: "read",
     description: "List Cloudflare accounts visible to the current credential.",
     requiredScopes: [r2ReadScope],
     providerPermissions: [r2ReadPermission],
@@ -137,6 +141,7 @@ export const cloudflareR2Actions: ActionDefinition[] = [
   }),
   defineProviderAction(service, {
     name: "list_buckets",
+    operationType: "read",
     description: "List the R2 buckets in a Cloudflare account.",
     requiredScopes: [r2ReadScope],
     providerPermissions: [r2ReadPermission],
@@ -163,6 +168,7 @@ export const cloudflareR2Actions: ActionDefinition[] = [
   }),
   defineProviderAction(service, {
     name: "get_bucket",
+    operationType: "read",
     description: "Get one R2 bucket by name.",
     requiredScopes: [r2ReadScope],
     providerPermissions: [r2ReadPermission],
@@ -179,6 +185,7 @@ export const cloudflareR2Actions: ActionDefinition[] = [
   }),
   defineProviderAction(service, {
     name: "download_object",
+    operationType: "read",
     description: "Download one R2 object into local transit file storage.",
     requiredScopes: [r2ReadScope],
     providerPermissions: [r2ReadPermission],
@@ -197,6 +204,7 @@ export const cloudflareR2Actions: ActionDefinition[] = [
   }),
   defineProviderAction(service, {
     name: "create_bucket",
+    operationType: "write",
     description: "Create an R2 bucket in a Cloudflare account.",
     requiredScopes: [r2WriteScope],
     providerPermissions: [r2WritePermission],
@@ -215,6 +223,7 @@ export const cloudflareR2Actions: ActionDefinition[] = [
   }),
   defineProviderAction(service, {
     name: "update_bucket",
+    operationType: "write",
     description: "Update mutable R2 bucket properties such as default storage class or jurisdiction.",
     requiredScopes: [r2WriteScope],
     providerPermissions: [r2WritePermission],
@@ -223,6 +232,7 @@ export const cloudflareR2Actions: ActionDefinition[] = [
   }),
   defineProviderAction(service, {
     name: "delete_bucket",
+    operationType: "destructive",
     description: "Delete an R2 bucket by name.",
     requiredScopes: [r2WriteScope],
     providerPermissions: [r2WritePermission],
@@ -242,6 +252,7 @@ export const cloudflareR2Actions: ActionDefinition[] = [
   }),
   defineProviderAction(service, {
     name: "get_bucket_cors_policy",
+    operationType: "read",
     description: "Fetch the bucket-level CORS policy for an R2 bucket.",
     requiredScopes: [r2ReadScope],
     providerPermissions: [r2ReadPermission],
@@ -264,6 +275,7 @@ export const cloudflareR2Actions: ActionDefinition[] = [
   }),
   defineProviderAction(service, {
     name: "update_bucket_cors_policy",
+    operationType: "destructive",
     description: "Replace the bucket-level CORS policy for an R2 bucket.",
     requiredScopes: [r2WriteScope],
     providerPermissions: [r2WritePermission],
@@ -284,6 +296,7 @@ export const cloudflareR2Actions: ActionDefinition[] = [
   }),
   defineProviderAction(service, {
     name: "delete_bucket_cors_policy",
+    operationType: "destructive",
     description: "Delete the bucket-level CORS policy for an R2 bucket.",
     requiredScopes: [r2WriteScope],
     providerPermissions: [r2WritePermission],
@@ -303,6 +316,7 @@ export const cloudflareR2Actions: ActionDefinition[] = [
   }),
   defineProviderAction(service, {
     name: "put_object",
+    operationType: "destructive",
     description:
       "Upload one R2 object by relaying a public URL, plain text, or base64-encoded content through the connector. This is the fallback for OAuth connections and callers that cannot PUT directly; custom API token connections should prefer generate_presigned_url with method PUT so the bytes go straight to R2 without the connector size cap.",
     requiredScopes: [r2WriteScope],
@@ -341,6 +355,7 @@ export const cloudflareR2Actions: ActionDefinition[] = [
   }),
   defineProviderAction(service, {
     name: "generate_presigned_url",
+    operationType: "read",
     description:
       "Generate a pre-signed R2 URL for a single GET, PUT, or HEAD request so the caller transfers bytes directly with R2. Preferred over the put_object and download_object relays. Requires a custom API token credential; OAuth connections cannot mint R2 S3 signatures.",
     requiredScopes: [r2ReadScope, r2WriteScope],
@@ -383,4 +398,13 @@ export const cloudflareR2Actions: ActionDefinition[] = [
       ),
     }),
   }),
+];
+
+export const cloudflareR2Actions: ActionDefinition[] = [
+  ...cloudflareR2CoreActions,
+  ...cloudflareR2ObjectActions,
+  ...cloudflareR2DomainActions,
+  ...cloudflareR2BucketSettingsActions,
+  ...cloudflareR2EventNotificationActions,
+  ...cloudflareR2AccountActions,
 ];

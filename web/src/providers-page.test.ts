@@ -83,10 +83,11 @@ describe("shouldEnableConnectionSubmit", () => {
     const auth: AuthDefinition = {
       type: "oauth2",
       scopes: [],
-      tokenEndpointAuthMethod: "client_secret_post",
-      clientConfigFields: [
+      clientFields: [
+        { key: "clientSecret", label: "Client secret", inputType: "password", secret: true, required: true },
         {
           key: "tenant",
+          location: "extra",
           label: "Tenant",
           inputType: "text",
           required: true,
@@ -113,11 +114,21 @@ describe("shouldEnableConnectionSubmit", () => {
 
   it("allows public OAuth clients without a secret", () => {
     expect(
-      shouldEnableConnectionSubmit({ type: "oauth2", scopes: [], tokenEndpointAuthMethod: "none" }, undefined, {
-        clientId: "public-client",
-        clientSecret: "",
-        extraValues: {},
-      }),
+      shouldEnableConnectionSubmit(
+        {
+          type: "oauth2",
+          scopes: [],
+          clientFields: [
+            { key: "clientSecret", label: "Client secret", inputType: "password", secret: true, required: false },
+          ],
+        },
+        undefined,
+        {
+          clientId: "public-client",
+          clientSecret: "",
+          extraValues: {},
+        },
+      ),
     ).toBe(true);
   });
 });
@@ -125,6 +136,7 @@ describe("shouldEnableConnectionSubmit", () => {
 describe("clientConfigFieldsFor", () => {
   const tenantField: CredentialField = {
     key: "tenant",
+    location: "extra",
     label: "Tenant",
     inputType: "text",
     required: true,
@@ -132,8 +144,8 @@ describe("clientConfigFieldsFor", () => {
     defaultValue: "common",
   };
 
-  it("returns the oauth2 auth definition's clientConfigFields", () => {
-    const auth: AuthDefinition = { type: "oauth2", scopes: [], clientConfigFields: [tenantField] };
+  it("uses the connector's extra client fields", () => {
+    const auth: AuthDefinition = { type: "oauth2", scopes: [], clientFields: [tenantField] };
 
     expect(clientConfigFieldsFor(auth)).toEqual([tenantField]);
   });
@@ -144,7 +156,7 @@ describe("clientConfigFieldsFor", () => {
     expect(clientConfigFieldsFor(auth)).toEqual([]);
   });
 
-  it("returns an empty array when oauth2 auth declares no clientConfigFields", () => {
+  it("returns an empty array when the setup description has no client fields", () => {
     const auth: AuthDefinition = { type: "oauth2", scopes: [] };
 
     expect(clientConfigFieldsFor(auth)).toEqual([]);
@@ -154,6 +166,7 @@ describe("clientConfigFieldsFor", () => {
 describe("initialClientConfigFieldValues", () => {
   const tenantField: CredentialField = {
     key: "tenant",
+    location: "extra",
     label: "Tenant",
     inputType: "text",
     required: true,
@@ -186,6 +199,7 @@ describe("initialClientConfigFieldValues", () => {
 describe("splitClientConfigFieldValues", () => {
   const tenantField: CredentialField = {
     key: "tenant",
+    location: "extra",
     label: "Tenant",
     inputType: "text",
     required: true,
@@ -265,7 +279,7 @@ describe("ProvidersPage route shell", () => {
     expect(markup).not.toContain("Reset Default App");
   });
 
-  it("uses task-oriented scenarios as the discovery entry point", () => {
+  it("keeps task-oriented scenarios available in the full catalog", () => {
     const markup = renderProvidersPage(
       {
         ...providerData,
@@ -274,23 +288,27 @@ describe("ProvidersPage route shell", () => {
       "/providers",
     );
 
-    expect(markup).toContain("Discover apps");
+    expect(markup).toContain("All apps");
     expect(markup).toContain("Browse by task");
-    expect(markup).toContain("Team collaboration");
+    expect(markup).toContain('<details class="provider-scenario-disclosure">');
+    expect(markup).toContain("Collaboration &amp; knowledge");
   });
 
-  it("defaults to connection management after a local credential is configured", () => {
+  it("shows the full catalog after a local credential is configured", () => {
     const markup = renderProvidersPage(
       {
         ...providerData,
+        providers: [oauthProvider, noAuthProvider],
         connections: [{ service: "gmail", authType: "oauth2", configured: true, metadata: {} }],
       },
       "/providers",
     );
 
-    expect(markup).toContain("My connections");
+    expect(markup).toContain("All apps");
+    expect(markup).toContain('My connections <span class="provider-view-count">1</span>');
     expect(markup).toContain("Gmail");
-    expect(markup).not.toContain("Browse by task");
+    expect(markup).toContain("Clock");
+    expect(markup).toContain("Showing 2 / 2");
   });
 
   it("renders a full provider detail page at /providers/:service", () => {
@@ -444,7 +462,12 @@ describe("ProvidersPage route shell", () => {
       authTypes: ["oauth2", "api_key"],
       auth: [
         { type: "oauth2", scopes: [] },
-        { type: "api_key", label: "Personal access token" },
+        {
+          type: "api_key",
+          fields: [
+            { key: "apiKey", label: "Personal access token", inputType: "password", required: true, secret: true },
+          ],
+        },
       ],
     };
     const markup = renderProvidersPage(
@@ -488,7 +511,7 @@ describe("ProvidersPage route shell", () => {
     const detailMarkup = renderProvidersPage(data, "/providers/catalog-only");
 
     expect(browserMarkup).toContain("Unavailable");
-    expect(browserMarkup).toContain("Details");
+    expect(browserMarkup).toContain('href="/providers/catalog-only"');
     expect(browserMarkup).not.toContain(">Connect<");
     expect(detailMarkup).toContain("Unavailable in this runtime");
     expect(detailMarkup).toContain(
@@ -518,7 +541,8 @@ describe("ProvidersPage route shell", () => {
     const markup = renderProvidersPage({ ...providerData, oauthConfigs: [] }, "/providers");
 
     expect(markup).not.toContain("OAuth client required");
-    expect(markup).toContain("Configure Default App");
+    expect(markup).toContain('href="/providers/gmail"');
+    expect(markup).toContain("Not connected");
   });
 
   it("starts the provider browser with a 48 item visible limit", () => {
@@ -532,7 +556,7 @@ describe("ProvidersPage route shell", () => {
       "/providers",
     );
 
-    expect(markup).toContain("Showing 50 / 50");
+    expect(markup).toContain("Showing 48 / 50");
     expect(markup).toContain("Show more");
     expect(markup).toContain("Clock 47");
     expect(markup).not.toContain("Clock 48");
@@ -594,9 +618,10 @@ describe("named provider connections", () => {
         auth: {
           type: "oauth2",
           scopes: [],
-          clientConfigFields: [
+          clientFields: [
             {
               key: "tenant",
+              location: "extra",
               label: "Tenant",
               inputType: "text",
               required: true,

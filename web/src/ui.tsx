@@ -29,10 +29,12 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Navigate, NavLink, Route, Routes, useLocation } from "react-router";
+import { defaultMarketplaceDiscoveryUrl, isDefaultMarketplace } from "../../src/marketplace/default-marketplace";
 import { AccessPage } from "./access-page";
 import { ActionsPage } from "./actions-page";
 import { ApiError, apiGet, apiPost } from "./api";
 import oomolConnectLogoUrl from "./assets/oomol-connect-logo.png";
+import { HostedServicePromo } from "./hosted-service-promo";
 import { persistLang, supportedLangs } from "./i18n";
 import { MarketplacePage } from "./marketplace-page";
 import { emptyData } from "./model";
@@ -150,7 +152,11 @@ export async function loadRuntimeData(
   }
 
   const catalogRequest =
-    cachedProviders !== undefined ? Promise.resolve(cachedProviders) : apiGet<ProviderDefinition[]>("/api/providers");
+    cachedProviders !== undefined
+      ? Promise.resolve(cachedProviders)
+      : apiGet<(ProviderDefinition & { setup: ProviderDefinition["auth"] })[]>("/api/providers").then((providers) =>
+          providers.map(({ setup, ...provider }) => ({ ...provider, auth: setup })),
+        );
 
   const [
     providers,
@@ -355,26 +361,31 @@ function AppShell(props: {
         <div className="brand">
           <img className="brand-mark" src={oomolConnectLogoUrl} alt="" />
           <div>
-            <div className="brand-name">OOMOL Connect</div>
+            <div className="brand-name">Open Connector</div>
             <div className="brand-subtitle">{t("brand.subtitle")}</div>
           </div>
         </div>
 
-        <nav className="sidebar-nav" aria-label={t("shell.primaryNav")}>
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <NavLink
-                key={item.path}
-                className={({ isActive }) => (isActive ? "nav-item active" : "nav-item")}
-                to={item.path}
-              >
-                <Icon size={16} />
-                <span>{t(item.labelKey)}</span>
-              </NavLink>
-            );
-          })}
-        </nav>
+        <div className="sidebar-content">
+          <nav className="sidebar-nav" aria-label={t("shell.primaryNav")}>
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              return (
+                <NavLink
+                  key={item.path}
+                  className={({ isActive }) => (isActive ? "nav-item active" : "nav-item")}
+                  to={item.path}
+                >
+                  <Icon size={16} />
+                  <span>{t(item.labelKey)}</span>
+                </NavLink>
+              );
+            })}
+          </nav>
+          {isDefaultMarketplace(props.data.marketplace?.discoveryUrl ?? defaultMarketplaceDiscoveryUrl) ? (
+            <HostedServicePromo />
+          ) : null}
+        </div>
 
         <div className="sidebar-footer">
           <LanguageSelect />
@@ -473,7 +484,7 @@ export function UnlockView(props: UnlockViewProps): ReactNode {
         <div className="brand">
           <img className="brand-mark" src={oomolConnectLogoUrl} alt="" />
           <div>
-            <div className="brand-name">OOMOL Connect</div>
+            <div className="brand-name">Open Connector</div>
             <div className="brand-subtitle">{t("brand.adminAccess")}</div>
           </div>
         </div>

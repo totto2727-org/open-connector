@@ -3,6 +3,8 @@ import {
   base64Bytes,
   booleanString,
   looseArray,
+  nullableBoolean,
+  nullableRawString,
   optionalIntegerOrNull,
   optionalNumberLike,
   optionalStringArray,
@@ -10,6 +12,7 @@ import {
   rawStringOrNull,
   recordOrEmpty,
   requiredBoolean,
+  requiredNumber,
   requiredRawString,
   requiredStringArray,
 } from "./cast.ts";
@@ -63,6 +66,12 @@ describe("cast helpers", () => {
     expect(() => requiredBoolean(0, "enabled")).toThrow("enabled must be a boolean");
   });
 
+  it("requires a finite number without coercion", () => {
+    expect(requiredNumber(1.5, "weight")).toBe(1.5);
+    expect(() => requiredNumber("1.5", "weight")).toThrow("weight must be a number");
+    expect(() => requiredNumber(undefined, "weight")).toThrow("weight must be a number");
+  });
+
   it("reads an array containing only strings", () => {
     expect(requiredStringArray(["one", "two"], "values")).toEqual(["one", "two"]);
   });
@@ -98,5 +107,19 @@ describe("cast helpers", () => {
     expect(booleanString(false)).toBe("false");
     expect(booleanString("true")).toBeUndefined();
     expect(booleanString(undefined)).toBeUndefined();
+  });
+
+  it("keeps null apart from absent values in the nullable raw string and boolean readers", () => {
+    expect(nullableRawString(null)).toBeNull();
+    expect(nullableRawString("")).toBe("");
+    expect(nullableRawString(" x ")).toBe(" x ");
+    expect(nullableRawString(1)).toBeUndefined();
+    expect(nullableRawString(undefined)).toBeUndefined();
+
+    expect(nullableBoolean(null)).toBeNull();
+    expect(nullableBoolean(false)).toBe(false);
+    expect(nullableBoolean(true)).toBe(true);
+    expect(nullableBoolean("true")).toBeUndefined();
+    expect(nullableBoolean(undefined)).toBeUndefined();
   });
 });

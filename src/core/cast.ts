@@ -79,6 +79,23 @@ export function requiredString(
 }
 
 /**
+ * Return a finite number or throw a caller-provided error. Examples:
+ * `requiredNumber(1.5, "weight") => 1.5`; `requiredNumber("x", "weight")` throws.
+ */
+export function requiredNumber(
+  value: unknown,
+  fieldName: string,
+  createError: CastErrorFactory = (message) => new CastError(message),
+): number {
+  const result = optionalNumber(value);
+  if (result !== undefined) {
+    return result;
+  }
+
+  throw createError(`${fieldName} must be a number`);
+}
+
+/**
  * Decode a strict non-empty Base64 string into bytes, or throw.
  */
 export function base64Bytes(
@@ -391,6 +408,22 @@ export function pickOptionalInteger(input: Record<string, unknown>, ...keys: str
  */
 export function nullableString(value: unknown): string | null | undefined {
   return value === null ? null : optionalString(value);
+}
+
+/**
+ * Return a string exactly as provided, null, or undefined when the value is not a string. Examples:
+ * `nullableRawString(null) => null`, `nullableRawString("") => ""`, `nullableRawString(1) => undefined`.
+ */
+export function nullableRawString(value: unknown): string | null | undefined {
+  return value === null ? null : optionalRawString(value);
+}
+
+/**
+ * Return a boolean, null, or undefined when the value is not a boolean. Examples:
+ * `nullableBoolean(null) => null`, `nullableBoolean(false) => false`, `nullableBoolean("true") => undefined`.
+ */
+export function nullableBoolean(value: unknown): boolean | null | undefined {
+  return value === null ? null : optionalBoolean(value);
 }
 
 /**

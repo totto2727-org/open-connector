@@ -16,6 +16,7 @@ import type { IOAuthCredentialRefresher } from "./oauth/oauth-credential-refresh
 import type { IProviderLoader } from "./providers/provider-loader.ts";
 
 import { normalizeCredentialValues } from "./core/credential-fields.ts";
+import { apiKeyCredentialFields } from "./core/provider-setup.ts";
 import { providerFetch } from "./providers/provider-runtime.ts";
 
 export const defaultConnectionName = "default";
@@ -33,16 +34,23 @@ export interface ConnectionSummary {
   virtual: boolean;
   default: boolean;
   profile: CredentialProfile;
+  /** Completed OAuth consent state; absent for legacy and non-OAuth connections. */
+  oauthAuthorizationId?: string;
   marketplace?: { id: string; pricing: MarketplacePricing };
 }
 
-/**
- * Request body for local credential connections.
- */
+export interface ManagedConnectionSummary extends ConnectionSummary {
+  status: "active" | "reauth_required";
+  comment: string | null;
+}
+
+/** Request body for local credential connections. */
 export interface ConnectWithCredentialInput {
   connectionName?: string;
   values?: Record<string, unknown>;
   signal?: AbortSignal;
+  expectedConnection?: StoredConnection;
+  comment?: string | null;
 }
 
 export interface ConnectWithoutAuthInput {
@@ -320,7 +328,7 @@ export class ConnectionService {
 
     const auth = this.getApiKeyDefinition(provider);
     const values = normalizeCredentialValues({
-      fields: createApiKeyFields(auth),
+      fields: apiKeyCredentialFields(auth),
       values: input.values ?? {},
       createError: (message) => new ConnectionError("invalid_input", message),
     });
@@ -333,16 +341,12 @@ export class ConnectionService {
       ...this.buildCredentialRuntimeData(
         provider,
         "api_key",
-        createApiKeyFields(auth),
+        apiKeyCredentialFields(auth),
         values,
         await this.validateApiKeyCredential(service, { apiKey, values }, input.signal),
       ),
     };
-    const connectionName = normalizeConnectionName(input.connectionName);
-    this.assertNotCancelled(input.signal);
-    const stored = await this.store.set(service, connectionName, credential);
-
-    return this.createStoredConnectionSummary(provider, stored.id, connectionName, credential);
+    return this.saveCredential(provider, credential, input);
   }
 
   async connectWithCustomCredential(service: string, input: ConnectWithCredentialInput): Promise<ConnectionSummary> {
@@ -368,11 +372,7 @@ export class ConnectionService {
         await this.validateCustomCredential(service, { values }, input.signal),
       ),
     };
-    const connectionName = normalizeConnectionName(input.connectionName);
-    this.assertNotCancelled(input.signal);
-    const stored = await this.store.set(service, connectionName, credential);
-
-    return this.createStoredConnectionSummary(provider, stored.id, connectionName, credential);
+    return this.saveCredential(provider, credential, input);
   }
 
   async setOAuthCredential(
@@ -381,27 +381,95 @@ export class ConnectionService {
     connectionNameInput?: string,
     signal?: AbortSignal,
   ): Promise<ConnectionSummary> {
+    const storedCredential = await this.prepareOAuthCredential(service, credential, signal);
+    const connectionName = normalizeConnectionName(connectionNameInput);
+    const stored = await this.store.set(service, connectionName, storedCredential);
+    return this.createStoredConnectionSummary(
+      this.getAvailableProvider(service),
+      stored.id,
+      connectionName,
+      storedCredential,
+    );
+  }
+
+  async prepareOAuthCredential(
+    service: string,
+    credential: OAuthCredential,
+    signal?: AbortSignal,
+  ): Promise<OAuthCredential> {
     const provider = this.getAvailableProvider(service);
     if (!this.supportsAuth(provider, "oauth2")) {
       throw new ConnectionError("unsupported_auth_type", `${service} does not support oauth2.`);
     }
 
-    const connectionName = normalizeConnectionName(connectionNameInput);
-    let validation: CredentialValidationResult = {};
-    try {
-      validation = await this.validateOAuthCredential(service, credential, signal);
-    } catch (error) {
-      if (!(error instanceof ConnectionError && error.code === "credential_verification_failed")) {
-        throw error;
-      }
-    }
+    const validation = await this.validateOAuthCredential(service, credential, signal);
     this.assertNotCancelled(signal);
-    const storedCredential = {
+    return {
       ...credential,
       ...this.mergeCredentialRuntimeData(provider, "oauth2", credential, validation),
     };
-    const stored = await this.store.set(service, connectionName, storedCredential);
-    return this.createStoredConnectionSummary(provider, stored.id, connectionName, storedCredential);
+  }
+
+  async getStoredConnection(id: string): Promise<StoredConnection> {
+    const connection = (await this.store.list()).find((item) => item.id === id);
+    if (!connection) throw new ConnectionError("connection_not_found", "Connection not found.");
+    return connection;
+  }
+
+  async listManagedConnections(): Promise<ManagedConnectionSummary[]> {
+    return (await this.store.list()).map((stored) => this.createManagedConnectionSummary(stored));
+  }
+
+  async getManagedConnection(id: string): Promise<ManagedConnectionSummary> {
+    return this.createManagedConnectionSummary(await this.getStoredConnection(id));
+  }
+
+  private createManagedConnectionSummary(stored: StoredConnection): ManagedConnectionSummary {
+    const credential = stored.credential;
+    return {
+      status:
+        credential.authType === "oauth2" && !credential.refreshToken && isOAuthCredentialExpired(credential)
+          ? "reauth_required"
+          : "active",
+      ...this.createConfiguredConnectionSummary(
+        this.getProvider(stored.service),
+        stored.id,
+        stored.connectionName,
+        credential,
+      ),
+      comment:
+        credential.authType !== "no_auth" && typeof credential.metadata.connectionComment === "string"
+          ? credential.metadata.connectionComment
+          : null,
+    };
+  }
+
+  private async saveCredential(
+    provider: ProviderDefinition,
+    credential: Exclude<ResolvedCredential, { authType: "no_auth" }>,
+    input: ConnectWithCredentialInput,
+  ): Promise<ConnectionSummary> {
+    const expected = input.expectedConnection;
+    const previousComment =
+      expected?.credential.authType !== "no_auth" ? expected?.credential.metadata.connectionComment : undefined;
+    if (input.comment !== undefined || previousComment !== undefined) {
+      credential.metadata.connectionComment = input.comment === undefined ? previousComment : input.comment;
+    }
+    this.assertNotCancelled(input.signal);
+    const stored = expected
+      ? await this.replaceCredential(expected, credential)
+      : await this.store.set(provider.service, normalizeConnectionName(input.connectionName), credential);
+    return this.createStoredConnectionSummary(provider, stored.id, stored.connectionName, credential);
+  }
+
+  private async replaceCredential(
+    expected: StoredConnection,
+    credential: ResolvedCredential,
+  ): Promise<StoredConnection> {
+    if (!(await this.store.updateCredential({ ...expected, credential }))) {
+      throw new ConnectionError("connection_changed", "The connection changed during authorization.");
+    }
+    return { ...expected, credential };
   }
 
   async disconnect(
@@ -441,7 +509,7 @@ export class ConnectionService {
     connectionName: string,
     credential: Exclude<ResolvedCredential, { authType: "no_auth" }>,
   ): ConnectionSummary {
-    return {
+    const summary: ConnectionSummary = {
       id,
       service: provider.service,
       connectionName,
@@ -451,6 +519,11 @@ export class ConnectionService {
       default: connectionName === defaultConnectionName,
       profile: credential.profile,
     };
+    // Credential metadata also contains client secrets. Expose only this runtime-owned string.
+    if (credential.authType === "oauth2" && typeof credential.metadata.oauthAuthorizationId === "string") {
+      summary.oauthAuthorizationId = credential.metadata.oauthAuthorizationId;
+    }
+    return summary;
   }
 
   private createNoAuthConnectionSummary(provider: ProviderDefinition, connectionName: string): ConnectionSummary {
@@ -716,6 +789,8 @@ export class ConnectionService {
       metadata: {
         ...credential.metadata,
         ...(validation.metadata ?? {}),
+        // Provider validation cannot replace or invent completed consent provenance.
+        oauthAuthorizationId: credential.metadata.oauthAuthorizationId,
       },
     };
   }
@@ -790,21 +865,6 @@ function isOAuthCredentialExpired(credential: Extract<ResolvedCredential, { auth
 
   const expiresAt = Date.parse(credential.expiresAt);
   return Number.isFinite(expiresAt) && expiresAt <= Date.now() + 60_000;
-}
-
-function createApiKeyFields(auth: ApiKeyAuthDefinition): CredentialDefinition[] {
-  return [
-    {
-      key: "apiKey",
-      label: auth.label ?? "API key",
-      inputType: "password",
-      required: true,
-      secret: true,
-      placeholder: auth.placeholder,
-      description: auth.description,
-    },
-    ...(auth.extraFields ?? []),
-  ];
 }
 
 export function normalizeConnectionName(value: string | undefined): string {

@@ -1,9 +1,12 @@
 import type { RuntimeActionDefinition, RuntimeProviderDefinition } from "../../catalog-store.ts";
-import type { ConnectionError, ConnectionSummary } from "../../connection-service.ts";
+import type { ConnectionError, ConnectionSummary, ManagedConnectionSummary } from "../../connection-service.ts";
+import type { ProviderAuthSetup } from "../../core/provider-setup.ts";
 import type { ExecutionResult, ProviderScenario } from "../../core/types.ts";
+import type { OAuthClientConfigSummary } from "../../oauth/oauth-client-config-service.ts";
 import type { Context } from "hono";
 
 import { optionalInteger, optionalRecord, requiredRecord } from "../../core/cast.ts";
+import { describeProviderAuth } from "../../core/provider-setup.ts";
 
 type RuntimeStatus = 400 | 401 | 402 | 403 | 404 | 409 | 413 | 429 | 500 | 501;
 
@@ -52,6 +55,7 @@ export interface RuntimeActionMetadata {
   service: string;
   name: string;
   description: string;
+  operationType: RuntimeActionDefinition["operationType"];
   requiredScopes: string[];
   providerPermissions: string[];
   inputSchema: RuntimeActionDefinition["inputSchema"];
@@ -71,6 +75,7 @@ export interface RuntimeConnectedApp {
   accountLabel: string;
   isDefault: boolean;
   scopes: string[];
+  marketplace?: ConnectionSummary["marketplace"];
 }
 
 export interface RuntimeFailureInput {
@@ -118,6 +123,7 @@ export function serializeRuntimeAction(action: RuntimeActionDefinition): Runtime
     service: action.service,
     name: action.name,
     description: action.description,
+    operationType: action.operationType,
     requiredScopes: action.requiredScopes,
     providerPermissions: action.providerPermissions,
     inputSchema: action.inputSchema,
@@ -141,6 +147,7 @@ export function serializeRuntimeConnectedApp(connection: ConnectionSummary): Run
     accountLabel: connection.profile.displayName,
     isDefault: connection.default,
     scopes: connection.profile.grantedScopes,
+    marketplace: connection.marketplace,
   };
 }
 
@@ -166,6 +173,15 @@ export function unknownActionFailure(actionId: string): RuntimeFailureInput {
     errorCode: "unknown_action",
     message: `Unknown action: ${actionId}`,
     meta: { actionId },
+  };
+}
+
+export function unknownServiceFailure(service: string): RuntimeFailureInput {
+  return {
+    status: 404,
+    errorCode: "unknown_service",
+    message: `Unknown service: ${service}.`,
+    meta: { service },
   };
 }
 
@@ -300,4 +316,69 @@ function isRuntimeStatus(value: unknown): value is RuntimeStatus {
     value === 500 ||
     value === 501
   );
+}
+
+/** Management view adds stored account metadata without exposing credentials. */
+export function serializeManagedConnection(connection: ManagedConnectionSummary): Omit<
+  RuntimeConnectedApp,
+  "status"
+> & {
+  status: ManagedConnectionSummary["status"];
+  providerAccountId: string;
+  comment: string | null;
+} {
+  return {
+    ...serializeRuntimeConnectedApp(connection),
+    status: connection.status,
+    providerAccountId: connection.profile.accountId,
+    comment: connection.comment,
+  };
+}
+
+export function connectionManagementFailure(error: { code: string; message: string }): RuntimeFailureInput {
+  const errorCode =
+    error.code === "connection_not_found"
+      ? "app_not_found"
+      : error.code === "unknown_service" || error.code === "unsupported_auth_type"
+        ? "invalid_input"
+        : error.code === "connection_changed"
+          ? "request_key_conflict"
+          : error.code;
+  return {
+    status: errorCode === "app_not_found" ? 404 : errorCode === "request_key_conflict" ? 409 : 400,
+    errorCode,
+    message: error.message,
+  };
+}
+
+/** Setup requirements and installation state, without provider protocol details or saved credentials. */
+export interface RuntimeProviderSetup {
+  service: string;
+  auth: ProviderAuthSetup[];
+  oauthClient?: RuntimeOAuthClientSetup;
+}
+
+interface RuntimeOAuthClientSetup {
+  configured: boolean;
+  customClientAvailable: boolean;
+  expectedRedirectUri: string;
+  missingFields: string[];
+}
+
+export function serializeRuntimeProviderSetup(
+  provider: RuntimeProviderDefinition,
+  oauth?: OAuthClientConfigSummary,
+): RuntimeProviderSetup {
+  return {
+    service: provider.service,
+    auth: provider.auth.map(describeProviderAuth),
+    oauthClient: oauth
+      ? {
+          configured: oauth.configured,
+          customClientAvailable: oauth.customClientAvailable,
+          expectedRedirectUri: oauth.expectedRedirectUri,
+          missingFields: oauth.missingFields,
+        }
+      : undefined,
+  };
 }

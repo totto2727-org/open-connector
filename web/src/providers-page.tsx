@@ -21,7 +21,6 @@ import {
   Cloud,
   Database,
   ExternalLink,
-  FileText,
   Megaphone,
   MessagesSquare,
   Plus,
@@ -30,6 +29,7 @@ import {
   ShoppingBag,
   SquareKanban,
   Trash2,
+  TrendingUp,
   X,
 } from "lucide-react";
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
@@ -170,7 +170,7 @@ export interface ManualOAuthAuthorizationInput {
   values: ManualOAuthClientValues;
 }
 
-type ProviderStatusFilter = "all" | "connected" | "not_connected" | "oauth_needs_config";
+type ProviderStatusFilter = "all" | "connected" | "no_setup" | "not_connected" | "oauth_needs_config";
 type ProviderBrowserView = "manage" | "discover";
 type ProviderDiscoveryScenario = Exclude<ProviderScenario, "other">;
 
@@ -190,8 +190,8 @@ const providerCardStyle = {
 const scenarioIconById: Record<ProviderDiscoveryScenario, ComponentType<{ className?: string }>> = {
   ai: Bot,
   "cross-border-ecommerce": ShoppingBag,
+  investment: TrendingUp,
   communication: MessagesSquare,
-  docs: FileText,
   productivity: SquareKanban,
   marketing: Megaphone,
   "data-storage": Database,
@@ -234,9 +234,7 @@ function ProviderBrowser(props: ProviderBrowserProps): ReactNode {
   const t = useTranslate();
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
-  const initialView = defaultProviderBrowserView(props.data.connections);
-  const [view, setView] = useState<ProviderBrowserView>(initialView);
-  const userSelectedView = useRef(false);
+  const [view, setView] = useState<ProviderBrowserView>("discover");
   const [statusFilter, setStatusFilter] = useState<ProviderStatusFilter>("all");
   const [scenarioFilter, setScenarioFilter] = useState<ProviderDiscoveryScenario | "all">("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
@@ -307,12 +305,6 @@ function ProviderBrowser(props: ProviderBrowserProps): ReactNode {
   );
   const scenarioCounts = useMemo(() => providerScenarioCounts(sortedProviders), [sortedProviders]);
 
-  useEffect(() => {
-    if (!userSelectedView.current) {
-      setView(initialView);
-    }
-  }, [initialView]);
-
   function resetFilters(): void {
     setQuery("");
     setStatusFilter("all");
@@ -321,7 +313,6 @@ function ProviderBrowser(props: ProviderBrowserProps): ReactNode {
   }
 
   function selectView(nextView: ProviderBrowserView): void {
-    userSelectedView.current = true;
     setView(nextView);
     setQuery("");
     setStatusFilter("all");
@@ -330,7 +321,6 @@ function ProviderBrowser(props: ProviderBrowserProps): ReactNode {
   }
 
   function selectScenario(scenario: ProviderDiscoveryScenario): void {
-    userSelectedView.current = true;
     setView("discover");
     setQuery("");
     setStatusFilter("all");
@@ -346,10 +336,10 @@ function ProviderBrowser(props: ProviderBrowserProps): ReactNode {
     >
       <TabsList variant="line" className="provider-browser-tabs-list" aria-label={t("providers.viewLabel")}>
         <TabsTrigger value="manage" className="flex-none px-4">
-          {t("providers.views.manage")}
+          {t("providers.views.manage")} <span className="provider-view-count">{managedProviders.length}</span>
         </TabsTrigger>
         <TabsTrigger value="discover" className="flex-none px-4">
-          {t("providers.views.discover")}
+          {t("providers.views.discover")} <span className="provider-view-count">{sortedProviders.length}</span>
         </TabsTrigger>
       </TabsList>
       <TabsContent value="manage" className="provider-browser-tab-content">
@@ -364,14 +354,14 @@ function ProviderBrowser(props: ProviderBrowserProps): ReactNode {
             onCategoryFilterChange={setCategoryFilter}
             onQueryChange={setQuery}
             onReset={resetFilters}
-            providerCount={visibleProviders.length}
+            providerCount={renderedProviders.length}
             providers={renderedProviders}
             query={query}
             showStatusFilters={false}
             statusByService={statusByService}
             counts={statusCounts}
             selected={statusFilter}
-            totalProviderCount={browserProviders.length}
+            totalProviderCount={visibleProviders.length}
           />
         ) : null}
       </TabsContent>
@@ -379,7 +369,10 @@ function ProviderBrowser(props: ProviderBrowserProps): ReactNode {
         {view === "discover" ? (
           <>
             {!query.trim() ? (
-              <ProviderScenarioGrid counts={scenarioCounts} providers={sortedProviders} onSelect={selectScenario} />
+              <details className="provider-scenario-disclosure">
+                <summary>{t("providers.discovery.browseByTask")}</summary>
+                <ProviderScenarioGrid counts={scenarioCounts} providers={sortedProviders} onSelect={selectScenario} />
+              </details>
             ) : null}
             <ProviderCatalog
               categoryFilter={categoryFilter}
@@ -392,7 +385,7 @@ function ProviderBrowser(props: ProviderBrowserProps): ReactNode {
               onQueryChange={setQuery}
               onReset={resetFilters}
               onStatusFilterChange={setStatusFilter}
-              providerCount={visibleProviders.length}
+              providerCount={renderedProviders.length}
               providers={renderedProviders}
               query={query}
               scenarioFilter={scenarioFilter}
@@ -400,7 +393,7 @@ function ProviderBrowser(props: ProviderBrowserProps): ReactNode {
               statusByService={statusByService}
               counts={statusCounts}
               selected={statusFilter}
-              totalProviderCount={browserProviders.length}
+              totalProviderCount={visibleProviders.length}
               onScenarioFilterClear={() => setScenarioFilter("all")}
             />
           </>
@@ -646,45 +639,27 @@ function scenarioTranslationKey(scenario: ProviderDiscoveryScenario): string {
 }
 
 function ProviderCard(props: ProviderCardProps): ReactNode {
-  const t = useTranslate();
   const to = `/providers/${encodeURIComponent(props.provider.service)}`;
   const locallyAvailable = isProviderLocallyAvailable(props.provider) || Boolean(props.status.marketplaceConnection);
-  const actionLabel = !locallyAvailable
-    ? t("providers.buttons.details")
-    : props.status.noSetupRequired
-      ? t("providers.buttons.details")
-      : props.status.connected
-        ? t("providers.buttons.manageConnection")
-        : props.status.oauthClientRequired
-          ? t("providers.buttons.configureOAuthClient")
-          : t("providers.buttons.connect");
 
   return (
-    <div className="provider-card" style={providerCardStyle}>
-      <Link className="provider-card-main" to={to}>
+    <Link className="provider-card" style={providerCardStyle} to={to}>
+      <span className="provider-card-main">
         <ProviderIcon provider={props.provider} />
         <span className="provider-card-info">
           <span className="provider-card-title-row">
             <span className="provider-card-title">{props.provider.displayName || props.provider.service}</span>
-            <ProviderStatusBadges status={props.status} locallyAvailable={locallyAvailable} compact />
+            <ProviderStatusBadges
+              status={props.status}
+              locallyAvailable={locallyAvailable}
+              compact
+              includeDisconnected
+            />
           </span>
-          {props.provider.description ? (
-            <span className="provider-card-description">{props.provider.description}</span>
-          ) : null}
         </span>
-      </Link>
-      <Link
-        className={
-          locallyAvailable && props.status.connected
-            ? "provider-card-action"
-            : "provider-card-action provider-card-action-muted"
-        }
-        to={to}
-      >
-        <span>{actionLabel}</span>
-        <ChevronRight size={15} />
-      </Link>
-    </div>
+      </span>
+      <ChevronRight className="provider-card-chevron" size={15} aria-hidden="true" />
+    </Link>
   );
 }
 
@@ -1099,7 +1074,10 @@ export function shouldEnableConnectionSubmit(
   if (!manualValues.clientId.trim()) {
     return false;
   }
-  if (auth.tokenEndpointAuthMethod !== "none" && !manualValues.clientSecret.trim()) {
+  if (
+    auth.clientFields?.some((field) => field.key === "clientSecret" && field.required) &&
+    !manualValues.clientSecret.trim()
+  ) {
     return false;
   }
   return clientConfigFieldsFor(auth).every(
@@ -1160,12 +1138,16 @@ function initialAuthType(
 }
 
 function authLabel(auth: AuthDefinition, t: (key: string) => string): string {
+  if (auth.type === "custom_credential" && auth.label?.trim()) return auth.label.trim();
   return authTypeLabel(auth.type, t);
 }
 
 function providerAuthTypeLabels(provider: ProviderDefinition, t: (key: string) => string): string[] {
   const authTypes = provider.authTypes.length > 0 ? provider.authTypes : provider.auth.map((auth) => auth.type);
-  return [...new Set(authTypes)].map((authType) => authTypeLabel(authType, t));
+  return [...new Set(authTypes)].map((authType) => {
+    const auth = provider.auth.find((auth) => auth.type === authType);
+    return auth ? authLabel(auth, t) : authTypeLabel(authType, t);
+  });
 }
 
 function authTypeLabel(authType: string, t: (key: string) => string): string {
@@ -1391,6 +1373,7 @@ function ConnectionForm(props: ConnectionFormProps): ReactNode {
   );
   const [status, setStatus] = useState<string | null>(null);
   const stopOAuthRefreshPolling = useRef<(() => void) | undefined>(undefined);
+  const authDescription = props.auth.type === "custom_credential" ? props.auth.description : undefined;
   const fields = credentialFieldsFor(props.auth);
   const showActions = shouldShowConnectionActions(props.auth);
   const connected = props.connection != null;
@@ -1585,7 +1568,7 @@ function ConnectionForm(props: ConnectionFormProps): ReactNode {
               type="password"
               value={manualClientSecret}
               onChange={(event) => setManualClientSecret(event.target.value)}
-              required={props.auth.tokenEndpointAuthMethod !== "none"}
+              required={props.auth.clientFields?.some((field) => field.key === "clientSecret" && field.required)}
             />
           </Label>
           {manualClientConfigFields.map((field) => (
@@ -1627,6 +1610,7 @@ function ConnectionForm(props: ConnectionFormProps): ReactNode {
           })}
         </div>
       ) : null}
+      {authDescription ? <small className="block text-muted-foreground">{authDescription}</small> : null}
       {fields.map((field) => (
         <CredentialInput
           key={field.key}
@@ -1678,7 +1662,8 @@ function filterProvidersByStatus(
   return providers.filter((provider) => {
     const providerStatus = statusByService.get(provider.service);
     if (status === "connected") return providerStatus?.connected;
-    if (status === "not_connected") return !providerStatus?.connected;
+    if (status === "no_setup") return providerStatus?.noSetupRequired;
+    if (status === "not_connected") return !providerStatus?.connected && !providerStatus?.noSetupRequired;
     return providerStatus?.oauthClientRequired;
   });
 }
@@ -1701,14 +1686,6 @@ export function providerBrowserResetKey(
   return `${query}\u0000${status}\u0000${category}\u0000${scenario}\u0000${view}`;
 }
 
-function defaultProviderBrowserView(connections: ConnectionRecord[]): ProviderBrowserView {
-  return connections.some(
-    (connection) => connection.authType !== "no_auth" && connection.virtual !== true && connection.configured !== false,
-  )
-    ? "manage"
-    : "discover";
-}
-
 function compactProviderCount(value: number): string {
   return compactNumberFormatter.format(value);
 }
@@ -1720,6 +1697,7 @@ export function oauthConfigForProvider(configs: OAuthConfig[], service: string):
 const providerStatusOptions: Array<{ id: ProviderStatusFilter; labelKey: string }> = [
   { id: "all", labelKey: "providers.filters.all" },
   { id: "connected", labelKey: "providers.filters.connected" },
+  { id: "no_setup", labelKey: "providers.filters.noSetup" },
   { id: "not_connected", labelKey: "providers.filters.notConnected" },
   { id: "oauth_needs_config", labelKey: "providers.filters.oauthNeedsConfig" },
 ];
