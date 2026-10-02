@@ -19,7 +19,7 @@ import { provider as slackProvider } from "../providers/slack/definition.ts";
 import { provider as slackbotProvider } from "../providers/slackbot/definition.ts";
 import { provider as tencentDocsProvider } from "../providers/tencent_docs/definition.ts";
 import { AesGcmSecretCodec } from "../server/secrets/secret-codec.ts";
-import { SqliteRuntimeDatabase } from "../server/storage/sqlite-runtime-store.ts";
+import { SqliteRuntimeDatabase } from "../server/storage/sqlite/runtime-store.ts";
 import { OAuthClientConfigService } from "./oauth-client-config-service.ts";
 import { OAuthFlowService } from "./oauth-flow-service.ts";
 
@@ -284,6 +284,106 @@ describe("OAuthFlowService", () => {
     expect(url.searchParams.get("redirect_uri")).toBe("http://localhost:3000/oauth/callback");
     expect(url.searchParams.get("response_type")).toBe("code");
     expect(url.searchParams.get("state")).toBeTruthy();
+  });
+
+  // A provider registered with a custom app scheme carries its own redirect:
+  // the authorize URL and the code exchange send the SAME value, and a provider
+  // configured without one keeps the runtime callback on both legs.
+  it.each(["authorization", "connection request"])(
+    "carries a configured redirect URI override on the %s authorize URL and its code exchange",
+    async (entry) => {
+      const services = createServices([oauthProvider, pkceOAuthProvider]);
+      await services.clientConfigs.upsertConfig({
+        service: "example",
+        clientId: "client-id",
+        clientSecret: "client-secret",
+        extra: { tenant: "default" },
+        redirectUri: "app://oauth/callback",
+      });
+      await services.clientConfigs.upsertConfig({
+        service: "pkce",
+        clientId: "client-id",
+        clientSecret: "client-secret",
+      });
+      const fetcher = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) =>
+        Response.json({ access_token: "access-token", token_type: "Bearer" }),
+      );
+      vi.stubGlobal("fetch", fetcher);
+
+      for (const [service, redirectUri] of [
+        ["example", "app://oauth/callback"],
+        ["pkce", "http://localhost:3000/oauth/callback"],
+      ] as const) {
+        const started =
+          entry === "authorization"
+            ? await services.flow.startAuthorization({ service })
+            : await services.flow.startConnectionRequest({ service, owner: "test-owner" });
+        const authorizationUrl = new URL(started.authorizationUrl);
+        expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(redirectUri);
+        const state = "state" in started ? started.state : started.stateHandle;
+        await services.flow.completeAuthorization({ state, code: `${service}-code` });
+        const tokenBody = fetcher.mock.calls.at(-1)?.[1]?.body;
+        expect(tokenBody).toBeInstanceOf(URLSearchParams);
+        expect((tokenBody as URLSearchParams).get("redirect_uri")).toBe(redirectUri);
+        expect((tokenBody as URLSearchParams).get("code")).toBe(`${service}-code`);
+      }
+    },
+  );
+
+  it.each(["authorization", "connection request"])(
+    "repeats the %s redirect URI on the code exchange after the client config changes",
+    async (entry) => {
+      const services = createServices([oauthProvider]);
+      const configure = (redirectUri?: string) =>
+        services.clientConfigs.upsertConfig({
+          service: "example",
+          clientId: "client-id",
+          clientSecret: "client-secret",
+          extra: { tenant: "default" },
+          redirectUri,
+        });
+      await configure("app://oauth/callback");
+      const fetcher = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) =>
+        Response.json({ access_token: "access-token", token_type: "Bearer" }),
+      );
+      vi.stubGlobal("fetch", fetcher);
+
+      const started =
+        entry === "authorization"
+          ? await services.flow.startAuthorization({ service: "example" })
+          : await services.flow.startConnectionRequest({ service: "example", owner: "test-owner" });
+      expect(new URL(started.authorizationUrl).searchParams.get("redirect_uri")).toBe("app://oauth/callback");
+      // The administrator removes the override while the browser is at the provider.
+      await configure(undefined);
+      await services.flow.completeAuthorization({
+        state: "state" in started ? started.state : started.stateHandle,
+        code: "code",
+      });
+
+      const tokenBody = fetcher.mock.calls.at(-1)?.[1]?.body as URLSearchParams;
+      expect(tokenBody.get("redirect_uri")).toBe("app://oauth/callback");
+    },
+  );
+
+  it("falls back to the client config redirect for a pending state that predates the recorded redirect", async () => {
+    const services = createServices([oauthProvider]);
+    await services.clientConfigs.upsertConfig({
+      service: "example",
+      clientId: "client-id",
+      clientSecret: "client-secret",
+      extra: { tenant: "default" },
+      redirectUri: "app://oauth/callback",
+    });
+    await services.states.set({ service: "example", state: "legacy-state", createdAt: new Date().toISOString() });
+    const fetcher = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) =>
+      Response.json({ access_token: "access-token", token_type: "Bearer" }),
+    );
+    vi.stubGlobal("fetch", fetcher);
+
+    await services.flow.completeAuthorization({ state: "legacy-state", code: "code" });
+
+    const tokenBody = fetcher.mock.calls.at(-1)?.[1]?.body as URLSearchParams;
+    expect(tokenBody.get("redirect_uri")).toBe("app://oauth/callback");
   });
 
   it("uses the requested scope subset from the OAuth client config", async () => {
@@ -1172,7 +1272,7 @@ class MemoryConnectionStore implements IConnectionStore {
     return this.store.get(createConnectionKey(service, connectionName));
   }
 
-  async set(service: string, connectionName: string, credential: ResolvedCredential): Promise<StoredConnection> {
+  async set(service: string, connectionName: string, credential: ResolvedCredential) {
     const key = createConnectionKey(service, connectionName);
     const connection = {
       id: this.store.get(key)?.id ?? crypto.randomUUID(),

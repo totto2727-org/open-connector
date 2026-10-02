@@ -4,6 +4,8 @@ import type {
   ProviderExecutors,
   ProviderProxyExecutor,
 } from "../../core/types.ts";
+import type { IntegrationDefinition } from "../../triggers/common/integration.ts";
+import type { PollDefinition } from "../../triggers/common/poll.ts";
 import type { ProviderActionHandlers } from "../provider-runtime.ts";
 
 import { compactObject, optionalBoolean } from "../../core/cast.ts";
@@ -17,7 +19,9 @@ import {
   readProviderProxyErrorMessage,
   readProviderProxyResponse,
   toProviderProxyError,
+  withRetryAfterSeconds,
 } from "../provider-runtime.ts";
+import { linearIssueChanged } from "./trigger-on-issue-changed.ts";
 
 const linearApiBaseUrl = "https://api.linear.app";
 const linearGraphqlUrl = "https://api.linear.app/graphql";
@@ -1370,7 +1374,11 @@ export const proxy: ProviderProxyExecutor = async (input, context) => {
     const response = await linearFetch(url, init);
     if (!response.ok) {
       const text = await readProviderProxyErrorMessage(response, "");
-      throw new ProviderRequestError(response.status, text || `linear request failed with HTTP ${response.status}`);
+      throw new ProviderRequestError(
+        response.status,
+        text || `linear request failed with HTTP ${response.status}`,
+        withRetryAfterSeconds(response),
+      );
     }
 
     return { ok: true, response: await readProviderProxyResponse(response) };
@@ -1461,7 +1469,7 @@ async function linearGraphqlRequest<T>(
 
   const body = await readJson(response);
   if (!response.ok) {
-    throwLinearHttpError(response.status, body);
+    throwLinearHttpError(response.status, body, withRetryAfterSeconds(response));
   }
 
   return body as LinearGraphQLResponse<T>;
@@ -2353,7 +2361,7 @@ async function readJson(response: Response) {
   }
 }
 
-function throwLinearHttpError(status: number, body: Record<string, unknown>) {
+function throwLinearHttpError(status: number, body: Record<string, unknown>, details?: unknown) {
   const message = extractErrorMessage(body);
 
   if (status === 400) {
@@ -2363,7 +2371,7 @@ function throwLinearHttpError(status: number, body: Record<string, unknown>) {
     throw new ProviderRequestError(401, message);
   }
   if (status === 429) {
-    throw new ProviderRequestError(429, message);
+    throw new ProviderRequestError(429, message, details);
   }
 
   throw new ProviderRequestError(502, message, status >= 500 ? 500 : status);
@@ -2481,3 +2489,5 @@ function asOptionalObject(value: unknown) {
 
   return value as Record<string, unknown>;
 }
+
+export const triggers: readonly (IntegrationDefinition | PollDefinition)[] = [linearIssueChanged];

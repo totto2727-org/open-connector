@@ -5,6 +5,8 @@ import type {
   ProviderProxyExecutor,
   ResolvedCredential,
 } from "../../core/types.ts";
+import type { IntegrationDefinition } from "../../triggers/common/integration.ts";
+import type { PollDefinition } from "../../triggers/common/poll.ts";
 import type { ProviderActionHandlers } from "../provider-runtime.ts";
 
 import { compactObject } from "../../core/cast.ts";
@@ -20,7 +22,9 @@ import {
   readProviderProxyResponse,
   requireBearerCredential,
   toProviderProxyError,
+  withRetryAfterSeconds,
 } from "../provider-runtime.ts";
+import { notionDatabasePageEvent } from "./trigger-on-database-page-event.ts";
 
 const service = "notion";
 const notionApiBaseUrl = "https://api.notion.com/v1";
@@ -179,7 +183,11 @@ export const proxy: ProviderProxyExecutor = async (input, context) => {
     const response = await notionFetch(url, init);
     if (!response.ok) {
       const text = await readProviderProxyErrorMessage(response, "");
-      throw new ProviderRequestError(response.status, text || `Notion request failed with HTTP ${response.status}`);
+      throw new ProviderRequestError(
+        response.status,
+        text || `Notion request failed with HTTP ${response.status}`,
+        withRetryAfterSeconds(response),
+      );
     }
 
     return { ok: true, response: await readProviderProxyResponse(response) };
@@ -945,7 +953,7 @@ async function assertNotionResponse(response: Response) {
     throw new ProviderRequestError(403, message);
   }
   if (response.status === 429) {
-    throw new ProviderRequestError(429, message);
+    throw new ProviderRequestError(429, message, withRetryAfterSeconds(response));
   }
 
   throw new ProviderRequestError(response.status, message);
@@ -1082,3 +1090,5 @@ function asNumber(value: unknown) {
 function asNonEmptyString(value: unknown) {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
+
+export const triggers: readonly (IntegrationDefinition | PollDefinition)[] = [notionDatabasePageEvent];

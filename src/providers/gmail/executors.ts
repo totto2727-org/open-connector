@@ -4,6 +4,8 @@ import type {
   ProviderExecutors,
   ProviderProxyExecutor,
 } from "../../core/types.ts";
+import type { IntegrationDefinition } from "../../triggers/common/integration.ts";
+import type { PollDefinition } from "../../triggers/common/poll.ts";
 import type { ProviderActionHandlers } from "../provider-runtime.ts";
 import type { GmailDraftResource, GmailMessageResource, GmailThreadResource } from "./message.ts";
 
@@ -22,6 +24,7 @@ import {
   readProviderJsonBody,
   requiredInputString,
   runProviderRequest,
+  withRetryAfterSeconds,
 } from "../provider-runtime.ts";
 import { decodeGmailAttachment } from "./attachment-stream.ts";
 import {
@@ -38,6 +41,7 @@ import {
   summarizeGmailMessage,
 } from "./message.ts";
 import { gmailOAuthScopes } from "./scopes.ts";
+import { gmailMessageReceived } from "./trigger-on-message-received.ts";
 
 const service = "gmail";
 const gmailApiBaseUrl = "https://gmail.googleapis.com/gmail/v1";
@@ -1189,7 +1193,9 @@ async function readGmailError(response: Response): Promise<ProviderRequestError>
   return new ProviderRequestError(
     response.status,
     optionalString(error?.message) ?? `gmail request failed with ${response.status}`,
-    undefined,
+    withRetryAfterSeconds(response),
     rateLimited ? "rate_limited" : undefined,
   );
 }
+
+export const triggers: readonly (IntegrationDefinition | PollDefinition)[] = [gmailMessageReceived];

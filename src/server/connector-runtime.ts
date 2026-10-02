@@ -1,4 +1,5 @@
 import type { ActionPolicyConfig } from "../core/action-policy.ts";
+import type { ProviderHttpDispatchOptions } from "../core/provider-http-dispatch.ts";
 import type { RuntimeLogger } from "../core/types.ts";
 import type { RuntimeJwtConfig } from "./api/runtime-jwt.ts";
 import type { S3TransitClientOptions } from "./files/s3-transit-files.ts";
@@ -68,6 +69,8 @@ export interface ConnectorRuntimeOptions {
   dataDir: string;
   /** External HTTP(S) URL, optionally including a mount path such as /connector. */
   publicOrigin: string;
+  /** False when the host supplied a development fallback instead of an explicit public origin. */
+  publicOriginConfigured?: boolean;
   /** Encrypts stored credentials, OAuth client configuration, pending OAuth state and replayed action responses. Omit to store them in plain text. */
   encryptionKey?: string;
   /** Bearer token required for management requests such as connections, OAuth clients and policies. Omit to leave them open. */
@@ -78,7 +81,9 @@ export interface ConnectorRuntimeOptions {
   jwt?: RuntimeJwtConfig;
   postgres?: ConnectorPostgresOptions;
   network?: ConnectorNetworkOptions;
-  /** Allow or block actions and proxies by name. */
+  /** Opt-in admission and result feedback for every provider HTTP transport attempt. */
+  providerHttpDispatch?: ProviderHttpDispatchOptions;
+  /** Allow or block actions, proxies and Triggers by name. */
   actionPolicy?: ActionPolicyConfig;
   /** Services, or `*`, whose connections may carry their own OAuth client instead of the configured one. */
   allowedCustomOAuth?: string[];
@@ -204,13 +209,15 @@ async function openRuntime(options: ConnectorRuntimeOptions): Promise<ConnectorR
     const tempDir = join(dataDir, "tmp/transit-files");
     await transitFiles.cleanupExpired();
     await cleanupStagedTransitFiles(tempDir, ttlSeconds * 1000);
-    const { app, runtimeAuthConfigured } = await createConnectApp({
+    const { app, runtimeAuthConfigured, saasCleanup, triggerMaintenance } = await createConnectApp({
       catalog,
       providerLoader: new ProviderLoader(executorModules),
+      providerHttpDispatch: options.providerHttpDispatch,
       runtimeDatabase: database,
       transitFiles,
       uploadTransitFile: createNodeTransitFileUpload({ transitFiles, tempDir }),
       publicOrigin,
+      configuredOrigin: options.publicOriginConfigured === false ? undefined : publicOrigin,
       secretCodec,
       adminToken: options.adminToken,
       runtimeToken: options.runtimeToken,
@@ -220,6 +227,8 @@ async function openRuntime(options: ConnectorRuntimeOptions): Promise<ConnectorR
       logger: options.logger,
       serveDocumentation: options.apiReference ?? false,
     });
+    saasCleanup.start();
+    triggerMaintenance.start();
     const shutdown = new AbortController();
     const pending = new Set<Promise<Response>>();
     let closing: Promise<void> | undefined;
@@ -247,7 +256,7 @@ async function openRuntime(options: ConnectorRuntimeOptions): Promise<ConnectorR
         if (!closing) {
           closing = Promise.resolve().then(async () => {
             shutdown.abort(new Error("Open Connector runtime is closing."));
-            await Promise.allSettled([...pending]);
+            await Promise.allSettled([...pending, saasCleanup.close(), triggerMaintenance.close()]);
             try {
               await database.close();
             } finally {

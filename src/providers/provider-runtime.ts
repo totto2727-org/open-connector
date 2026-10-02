@@ -1,3 +1,4 @@
+import type { ProviderDispatchContext, ProviderHttpDispatchOptions } from "../core/provider-http-dispatch.ts";
 import type {
   ActionExecutor,
   ExecutionContext,
@@ -23,6 +24,11 @@ import {
   requiredString,
 } from "../core/cast.ts";
 import { createGuardedFetch } from "../core/guarded-fetch.ts";
+import {
+  dispatchProviderHttpAttempt,
+  ProviderHttpDispatchError,
+  runWithProviderHttpDispatch,
+} from "../core/provider-http-dispatch.ts";
 import { readBoundedResponseBytes } from "../core/request.ts";
 
 /**
@@ -53,6 +59,14 @@ export interface ProviderFetchOptions {
  */
 export function createProviderFetch(options: ProviderFetchOptions = {}): ProviderFetch {
   return createGuardedFetch({
+    dispatchAttempt: async (attempt, signal, transport, revalidate) => {
+      try {
+        return await dispatchProviderHttpAttempt(attempt, signal, transport, revalidate);
+      } catch (error) {
+        if (error instanceof ProviderHttpDispatchError) throw new ProviderDispatchRequestError(error.retryAfterSeconds);
+        throw error;
+      }
+    },
     fetch: options.fetch,
     allowPrivateNetwork: options.allowPrivateNetwork,
     skipDnsValidation: options.skipDnsValidation,
@@ -77,6 +91,20 @@ export function createProviderFetch(options: ProviderFetchOptions = {}): Provide
  * the native fetch is always invoked without a stray receiver.
  */
 export const providerFetch: ProviderFetch = createProviderFetch();
+
+/** Preserve admission denials at the shared runtime boundary despite provider-specific error mapping. */
+export async function withProviderHttpDispatchResult<T>(
+  context: ProviderDispatchContext,
+  run: () => T | Promise<T>,
+  options?: ProviderHttpDispatchOptions,
+): Promise<T> {
+  try {
+    return await runWithProviderHttpDispatch(context, run, options);
+  } catch (error) {
+    if (error instanceof ProviderHttpDispatchError) throw new ProviderDispatchRequestError(error.retryAfterSeconds);
+    throw error;
+  }
+}
 
 /**
  * Default User-Agent sent by local provider executors.
@@ -271,6 +299,13 @@ export class ProviderRequestError extends Error {
     this.status = status;
     this.details = details;
     this.code = code;
+  }
+}
+
+/** A dispatch denial is retryable and must not be wrapped as a bad provider credential. */
+export class ProviderDispatchRequestError extends ProviderRequestError {
+  constructor(retryAfterSeconds?: number) {
+    super(429, "Provider HTTP dispatch is temporarily unavailable.", { retryAfterSeconds }, "rate_limited");
   }
 }
 
@@ -1074,6 +1109,59 @@ export async function readProviderErrorTextBody(response: Response, fieldName: s
   } catch {
     return "";
   }
+}
+
+// The three HTTP-date forms of RFC 9110 section 5.6.7. Date.parse alone is too
+// lenient for a header: V8 reads "wait 5" as 1 May 2001, and reads the zone-less
+// asctime form as local time although every HTTP-date is UTC.
+const imfFixdatePattern =
+  /^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), \d{2} (?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{4} \d{2}:\d{2}:\d{2} GMT$/;
+const rfc850DatePattern =
+  /^(?:Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day, \d{2}-(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)-\d{2} \d{2}:\d{2}:\d{2} GMT$/;
+const asctimeDatePattern =
+  /^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun) (?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) [ \d]\d \d{2}:\d{2}:\d{2} \d{4}$/;
+
+/**
+ * Read a `Retry-After` header as whole seconds from now: an integer delay
+ * verbatim, an HTTP-date as the seconds until that instant (never negative).
+ * Examples: `"73" => 73`; a date 90 s ahead `=> 90`; absent or unparseable
+ * `=> undefined`.
+ */
+export function readRetryAfterSeconds(headers: Headers, now: number = Date.now()): number | undefined {
+  const value = headers.get("retry-after")?.trim();
+  if (!value) {
+    return undefined;
+  }
+  if (/^\d+$/.test(value)) {
+    const seconds = Number(value);
+    return Number.isSafeInteger(seconds) ? seconds : undefined;
+  }
+  const retryAt =
+    imfFixdatePattern.test(value) || rfc850DatePattern.test(value)
+      ? Date.parse(value)
+      : asctimeDatePattern.test(value)
+        ? Date.parse(`${value} GMT`)
+        : Number.NaN;
+  return Number.isFinite(retryAt) ? Math.max(0, Math.ceil((retryAt - now) / 1000)) : undefined;
+}
+
+/**
+ * Attach a rate-limited response's `Retry-After` to its error details in the
+ * shape Slack established, `details.retryAfterSeconds`, so every provider's
+ * 429 (and 503) reaches the action envelope with the same pacing hint.
+ * Other statuses, and responses without a usable header, return `details`
+ * untouched; non-record details are kept under `body`.
+ */
+export function withRetryAfterSeconds(response: Response, details?: unknown): unknown {
+  if (response.status !== 429 && response.status !== 503) {
+    return details;
+  }
+  const retryAfterSeconds = readRetryAfterSeconds(response.headers);
+  if (retryAfterSeconds === undefined) {
+    return details;
+  }
+  const record = optionalRecord(details) ?? (details == null ? {} : { body: details });
+  return { ...record, retryAfterSeconds };
 }
 
 /**
