@@ -59,7 +59,9 @@ describe("action execution OpenAPI", () => {
             expect.objectContaining({ name: "x-oo-connector-app-id", in: "header" }),
           ]),
         );
-        expect(operation.description).toContain("1 MiB");
+        expect(operation.description).toContain("without an adapter-specific size cap");
+        expect(operation.description).toContain("Methods and paths are validated by the existing proxy");
+        expect(operation.description).not.toContain("1 MiB");
         expect(operation.description).toContain("without a runtime envelope");
         expect(operation.description).toContain("SSE");
         expect(operation.description).toContain("CSP is sandbox");

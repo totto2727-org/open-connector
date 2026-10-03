@@ -15,7 +15,6 @@ export type JsonRequestBody = {
   [key: string]: unknown;
 };
 
-const passthroughRequestMaxBytes = 1024 * 1024;
 const hopByHopHeaders = new Set([
   "connection",
   "keep-alive",
@@ -68,16 +67,9 @@ export function filterPassthroughHeaders(headers: Headers, direction: "request" 
   return filtered;
 }
 
-/** Adapt a native, bounded UTF-8 request without parsing or re-encoding its body or query. */
+/** Adapt a native UTF-8 request without parsing its body or query. */
 export async function readPassthroughRequest(context: Context): Promise<ProxyRequestInput> {
   const method = context.req.method;
-  if (!["DELETE", "GET", "HEAD", "PATCH", "POST", "PUT"].includes(method)) {
-    throw new HttpRequestError(
-      "unsupported_method",
-      "Passthrough supports DELETE, GET, HEAD, PATCH, POST, and PUT.",
-      405,
-    );
-  }
   const headers = context.req.raw.headers;
   if (headers.has("upgrade") || /(?:^|,)\s*upgrade\s*(?:,|$)/i.test(headers.get("connection") ?? "")) {
     throw new HttpRequestError("unsupported_transport", "Protocol upgrades are not supported.", 501);
@@ -91,39 +83,17 @@ export async function readPassthroughRequest(context: Context): Promise<ProxyReq
   }
   const contentType = (headers.get("content-type") ?? "").toLowerCase();
   const mediaType = contentType.split(";", 1)[0]!.trim();
-  const charset = /;\s*charset\s*=\s*"?([^;"\s]+)/i.exec(contentType)?.[1];
-  if (charset && charset !== "utf-8" && charset !== "utf8") {
-    throw new HttpRequestError("unsupported_media_type", "Request bodies must use UTF-8.", 415);
-  }
-  if (
-    context.req.raw.body &&
-    (!mediaType ||
-      mediaType === "text/event-stream" ||
-      !(
-        mediaType.startsWith("text/") ||
-        /^application\/(?:json|[\w.+-]+\+json|xml|[\w.+-]+\+xml|javascript|x-www-form-urlencoded)$/.test(mediaType)
-      ))
-  ) {
-    throw new HttpRequestError(
-      "unsupported_media_type",
-      "Only UTF-8 text, JSON, XML, and form request bodies are supported.",
-      415,
-    );
+  if (mediaType === "text/event-stream") {
+    throw new HttpRequestError("unsupported_transport", "Streaming requests are not supported.", 501);
   }
   const endpoint = context.req.path.replace(/^\/v1\/passthrough\/[^/]+/, "") || "/";
-  // Encoded separators and nested escapes have ambiguous traversal semantics across upstream servers.
-  if (/%(?:2f|5c|25)/i.test(endpoint)) {
-    throw new HttpRequestError("invalid_input", "Encoded path separators and nested escapes are not supported.");
-  }
   const request: ProxyRequestInput = {
     endpoint: endpoint + new URL(context.req.url).search,
     method,
     headers: Object.fromEntries(filterPassthroughHeaders(headers, "request")),
   };
-  const body = await readRequestText(context, passthroughRequestMaxBytes, true);
-  if (method === "GET" || method === "HEAD") {
-    if (body) throw new HttpRequestError("invalid_input", "GET and HEAD requests must not include a body.");
-  } else if (context.req.raw.body) {
+  const body = await readRequestText(context, undefined, true);
+  if (context.req.raw.body) {
     request.body = body;
   }
   return request;
@@ -134,19 +104,21 @@ async function readRequestText(context: Context, maxBytes?: number, requireUtf8 
   if (maxBytes !== undefined && Number.isFinite(contentLength) && contentLength > maxBytes) {
     throw new HttpRequestError("payload_too_large", `Request body must not exceed ${maxBytes} bytes.`, 413);
   }
-  if (maxBytes === undefined) return context.req.raw.text();
+  if (maxBytes === undefined && !requireUtf8) return context.req.raw.text();
   if (!context.req.raw.body) return "";
   const reader = context.req.raw.body.getReader();
-  const decoder = new TextDecoder("utf-8", { fatal: requireUtf8 });
+  const decoder = new TextDecoder("utf-8", { fatal: requireUtf8, ignoreBOM: requireUtf8 });
   let byteLength = 0;
   let text = "";
   try {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      byteLength += value.byteLength;
-      if (byteLength > maxBytes) {
-        throw new HttpRequestError("payload_too_large", `Request body must not exceed ${maxBytes} bytes.`, 413);
+      if (maxBytes !== undefined) {
+        byteLength += value.byteLength;
+        if (byteLength > maxBytes) {
+          throw new HttpRequestError("payload_too_large", `Request body must not exceed ${maxBytes} bytes.`, 413);
+        }
       }
       text += decoder.decode(value, { stream: true });
     }

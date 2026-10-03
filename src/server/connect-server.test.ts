@@ -3974,29 +3974,24 @@ describe("ConnectServer", () => {
       expect(transport).not.toHaveBeenCalled();
     });
 
-    it.each([
-      "//evil.example/items",
-      "/https://evil.example/items",
-      "/items/%2e%2e%2fsecret",
-      "/items/%252e%252e/secret",
-      "/items/%invalid",
-    ])("rejects unsafe native target %s before fetch", async (path) => {
-      const transport = vi.fn<typeof fetch>();
-      vi.stubGlobal("fetch", transport);
-      const app = await createPassthroughTestApp();
-      const response = await app.request(`/v1/passthrough/example${path}`);
-      expect(response.status).toBe(400);
-      await expect(response.json()).resolves.toMatchObject({ code: 400 });
-      expect(transport).not.toHaveBeenCalled();
-    });
+    it.each(["//evil.example/items", "/https://evil.example/items", "/items/%invalid"])(
+      "uses existing proxy validation to reject unsafe native target %s before fetch",
+      async (path) => {
+        const transport = vi.fn<typeof fetch>();
+        vi.stubGlobal("fetch", transport);
+        const app = await createPassthroughTestApp();
+        const response = await app.request(`/v1/passthrough/example${path}`);
+        expect(response.status).toBe(400);
+        await expect(response.json()).resolves.toMatchObject({ code: 400 });
+        expect(transport).not.toHaveBeenCalled();
+      },
+    );
 
     it.each<UnsupportedPassthroughRequest>([
       { headers: { "content-type": "application/octet-stream" }, body: new Uint8Array([0, 255]), status: 415 },
-      { headers: { "content-type": "multipart/form-data; boundary=x" }, body: "--x", status: 415 },
       { headers: { "content-type": "application/json", "content-encoding": "gzip" }, body: "{}", status: 415 },
-      { headers: { "content-type": "text/plain; charset=iso-8859-1" }, body: "text", status: 415 },
       { headers: { "content-type": "text/plain" }, body: new Uint8Array([255]), status: 415 },
-      { headers: { "content-type": "text/event-stream" }, body: "data: event", status: 415 },
+      { headers: { "content-type": "text/event-stream" }, body: "data: event", status: 501 },
       { headers: { "content-type": "application/json", accept: "text/event-stream" }, body: "{}", status: 501 },
       {
         headers: { "content-type": "application/json", upgrade: "websocket", connection: "Upgrade" },
@@ -4013,30 +4008,71 @@ describe("ConnectServer", () => {
       expect(transport).not.toHaveBeenCalled();
     });
 
-    it("rejects unsupported native methods before fetch", async () => {
+    it.each(["/items/a%2Fb", "/items/100%25", "/items/a%252Fb"])(
+      "forwards encoded native path %s accepted by the existing proxy",
+      async (path) => {
+        const transport = vi.fn<typeof fetch>(async () => new Response("ok"));
+        vi.stubGlobal("fetch", transport);
+        const app = await createPassthroughTestApp();
+        const response = await app.request(`/v1/passthrough/example${path}`);
+        expect(response.status).toBe(200);
+        expect(String(transport.mock.calls[0]?.[0])).toBe(`https://example.com/api${path}`);
+        const legacy = await app.request("/v1/proxy/example", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ endpoint: path, method: "GET" }),
+        });
+        expect(legacy.status).toBe(200);
+        expect(String(transport.mock.calls[1]?.[0])).toBe(String(transport.mock.calls[0]?.[0]));
+      },
+    );
+
+    it("uses existing proxy validation to reject unsupported native methods before fetch", async () => {
       const transport = vi.fn<typeof fetch>();
       vi.stubGlobal("fetch", transport);
       const app = await createPassthroughTestApp();
       const response = await app.request("/v1/passthrough/example/items", { method: "OPTIONS" });
-      expect(response.status).toBe(405);
-      await expect(response.json()).resolves.toMatchObject({ code: 405 });
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({ code: 400 });
       expect(transport).not.toHaveBeenCalled();
     });
 
-    it.each([true, false])("bounds native request bodies with declared length %s", async (declaredLength) => {
-      const transport = vi.fn<typeof fetch>();
+    it.each([true, false])("does not impose a new request cap with declared length %s", async (declaredLength) => {
+      const transport = vi.fn<typeof fetch>(async () => new Response("ok"));
       vi.stubGlobal("fetch", transport);
       const app = await createPassthroughTestApp();
       const headers = new Headers({ "content-type": "text/plain" });
       if (declaredLength) headers.set("content-length", String(1024 * 1024 + 1));
+      const body = "x".repeat(1024 * 1024 + 1);
       const response = await app.request("/v1/passthrough/example/items", {
         method: "POST",
         headers,
-        body: "x".repeat(1024 * 1024 + 1),
+        body,
       });
-      expect(response.status).toBe(413);
-      await expect(response.json()).resolves.toMatchObject({ code: 413 });
-      expect(transport).not.toHaveBeenCalled();
+      expect(response.status).toBe(200);
+      expect(transport.mock.calls[0]?.[1]?.body).toBe(body);
+    });
+
+    it.each([
+      ["image/svg+xml", "<svg/>"],
+      ["application/octet-stream", "\uFEFF日本語"],
+      ["multipart/form-data; boundary=x", '--x\r\nContent-Disposition: form-data; name="field"\r\n\r\ntext\r\n--x--'],
+      ["text/plain; charset=iso-8859-1", "ASCII text"],
+      [undefined, "untyped text"],
+    ])("forwards valid UTF-8 without a MIME or charset whitelist: %s", async (contentType, body) => {
+      const transport = vi.fn<typeof fetch>(async () => new Response("ok"));
+      vi.stubGlobal("fetch", transport);
+      const app = await createPassthroughTestApp();
+      const headers = new Headers();
+      if (contentType) headers.set("content-type", contentType);
+      const response = await app.request("/v1/passthrough/example/items", {
+        method: "POST",
+        headers,
+        body: new TextEncoder().encode(body),
+      });
+      expect(response.status).toBe(200);
+      expect(transport.mock.calls[0]?.[1]?.body).toBe(body);
+      expect(new Headers(transport.mock.calls[0]?.[1]?.headers).get("content-type")).toBe(contentType ?? null);
     });
 
     it("preserves UTF-8 characters split across native request stream chunks", async () => {
@@ -4063,14 +4099,14 @@ describe("ConnectServer", () => {
       expect(transport.mock.calls[0]?.[1]?.body).toBe("日本語");
     });
 
-    it("cancels an oversized native request stream before upstream fetch", async () => {
+    it("cancels invalid UTF-8 native request streams before upstream fetch", async () => {
       const transport = vi.fn<typeof fetch>();
       const cancel = vi.fn();
       vi.stubGlobal("fetch", transport);
       const app = await createPassthroughTestApp();
       const body = new ReadableStream<Uint8Array>({
         pull(controller) {
-          controller.enqueue(new Uint8Array(128 * 1024));
+          controller.enqueue(new Uint8Array([255]));
         },
         cancel,
       });
@@ -4081,7 +4117,7 @@ describe("ConnectServer", () => {
         duplex: "half",
       };
       const response = await app.fetch(new Request("http://localhost/v1/passthrough/example/items", init));
-      expect(response.status).toBe(413);
+      expect(response.status).toBe(415);
       expect(cancel).toHaveBeenCalledTimes(1);
       expect(transport).not.toHaveBeenCalled();
     });

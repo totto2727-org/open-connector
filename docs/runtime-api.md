@@ -464,10 +464,11 @@ Neither route automatically retries failed requests.
 Local executions on the existing envelope route now include correlated `meta.service` and `meta.executionId`, compatible with the official `oo` CLI proxy response schema.
 
 This is a pragmatic CLI/JSON API adapter, not a byte-identical transport proxy.
-Requests are limited to 1 MiB of valid UTF-8 text, JSON, XML, or URL-encoded form data.
+Requests must contain valid UTF-8; the adapter adds no request size cap or MIME/charset whitelist.
+UTF-8 multipart or octet-stream content is accepted, but arbitrary non-UTF-8 bytes are not supported by the existing text-body transport.
+Method, GET/HEAD body, and path validation belongs to the existing proxy, without additional encoded-path restrictions.
 GET and HEAD must not have bodies, and SaaS connections do not support HEAD.
-Unsupported methods return 405, oversized requests 413, unsupported or compressed media 415, and SSE or protocol upgrades 501.
-Multipart and binary request bodies, encoded path separators, and nested path escapes are rejected.
+Unsupported methods return the existing proxy's 400, invalid UTF-8 or compressed bodies 415, and SSE or protocol upgrades 501.
 Provider-specific deadlines and response caps still apply, including the shared local proxy's 20 MiB successful response cap.
 An unexpected SSE response is rejected after the existing bounded buffered read, not handled as a stream.
 

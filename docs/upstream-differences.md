@@ -23,7 +23,8 @@ The virtual workspace maps this independent repository to `app/open-connector/` 
 The fork adds `/v1/passthrough/:service/*` alongside the existing envelope-based `/v1/proxy/:service` route.
 It reuses runtime authentication, proxy and connection grants, stored credentials, policy snapshots, provider dispatch, and SSRF-guarded egress, but accepts native HTTP method/path/query/text body and returns native buffered status/body.
 The intended consumer is the official Monid CLI using a gateway base URL, without a local HTTP relay.
-The adapter deliberately supports a bounded UTF-8 request subset, not streaming, upgrades, arbitrary destinations, cookie sessions, or byte-identical transport headers.
+The adapter supports UTF-8 requests without adding a request size cap, MIME/charset whitelist, or duplicate method/path validation beyond the existing proxy.
+It does not support streaming, upgrades, non-UTF-8 or compressed requests, arbitrary destinations, cookie sessions, or byte-identical transport headers.
 Gateway-owned CSP sandbox and nosniff headers prevent upstream active content from becoming a same-origin application.
 Local provider proxy executions also gain a real correlated execution UUID and `meta.service`, fixing the official `oo` CLI's required response metadata without changing the existing envelope payload.
 Maintained regression coverage exercises native forwarding, grants, provider boundaries, unsafe inputs, active-content headers, and legacy envelope behavior.

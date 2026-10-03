@@ -1395,12 +1395,12 @@ function createPassthroughPath(hasEndpoint: boolean): Record<string, unknown> {
       tags: ["Proxy"],
       summary: "Forward one buffered native provider HTTP request.",
       description:
-        "Uses the same authentication, proxy policy, connection grants, stored credentials, and guarded provider egress as /v1/proxy. Returns the upstream status and buffered body without a runtime envelope. The root route forwards /. All query parameters belong to the upstream API; select connections only with headers. Request bodies are bounded to 1 MiB of valid UTF-8 text, JSON, XML, or URL-encoded form data. Compression, multipart/binary requests, SSE, and upgrades are unsupported. Encoded separators and nested path escapes are rejected. Provider-specific limits still apply; SaaS connections reject HEAD. Authentication, cookies, selection, hop-by-hop, and reconstructed-body headers are filtered. Response CSP is sandbox and X-Content-Type-Options is nosniff. Upstream CORS, cache overrides, origin-control, reporting, and Refresh headers are stripped; gateway no-store remains authoritative. Unexpected native 3xx responses other than 304 are rejected with 502. JSON formatting and transport headers are not byte-identical. Known upstream numeric code/string message errors are decoded; other failures use a native code/message fallback. Failed calls are not automatically replayed.",
+        "Uses the same authentication, proxy policy, connection grants, stored credentials, and guarded provider egress as /v1/proxy. Returns the upstream status and buffered body without a runtime envelope. The root route forwards /. All query parameters belong to the upstream API; select connections only with headers. Request bodies must contain valid UTF-8, without an adapter-specific size cap or MIME/charset whitelist. Methods and paths are validated by the existing proxy. Compression, non-UTF-8 requests, SSE, and upgrades are unsupported. Provider-specific limits still apply; SaaS connections reject HEAD. Authentication, cookies, selection, hop-by-hop, and reconstructed-body headers are filtered. Response CSP is sandbox and X-Content-Type-Options is nosniff. Upstream CORS, cache overrides, origin-control, reporting, and Refresh headers are stripped; gateway no-store remains authoritative. Unexpected native 3xx responses other than 304 are rejected with 502. JSON formatting and transport headers are not byte-identical. Known upstream numeric code/string message errors are decoded; other failures use a native code/message fallback. Failed calls are not automatically replayed.",
       parameters,
       responses: {
         default: {
           description:
-            "Upstream HTTP status and buffered JSON, text, or binary response; HEAD and no-content statuses have no body. Gateway failures return application/json with numeric code and string message. Unsupported methods return 405, media types 415, large requests 413, and streaming or upgrades 501.",
+            "Upstream HTTP status and buffered JSON, text, or binary response; HEAD and no-content statuses have no body. Gateway failures return application/json with numeric code and string message. Unsupported methods return the existing proxy's 400; invalid UTF-8 or compression returns 415, and streaming or upgrades 501.",
           content: {
             "application/json": { schema: jsonSchema.unknown("Native upstream JSON or gateway code/message error.") },
             "text/plain": { schema: { type: "string" } },
@@ -1413,7 +1413,9 @@ function createPassthroughPath(hasEndpoint: boolean): Record<string, unknown> {
       operation.requestBody = {
         required: false,
         content: {
-          "application/json": { schema: jsonSchema.unknown("Native JSON, bounded to 1 MiB of UTF-8.") },
+          "application/json": {
+            schema: jsonSchema.unknown("Native UTF-8 JSON, without an adapter-specific request size cap."),
+          },
           "text/plain": { schema: { type: "string" } },
           "application/xml": { schema: { type: "string" } },
           "application/x-www-form-urlencoded": { schema: { type: "string" } },

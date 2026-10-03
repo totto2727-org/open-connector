@@ -119,9 +119,10 @@ Keep credential files mode 0600 and profile directories mode 0700, and never pri
 The route shares the same `allowedProxies` and `allowedConnections` checks as the existing proxy.
 Gateway bearer credentials and cookies are stripped before the saved Monid API key is applied.
 Transferable headers are preserved where the existing engine allows it, but transport reconstruction and security headers differ.
-Requests must be valid UTF-8 text/JSON/XML/form data within 1 MiB.
+Requests must contain valid UTF-8, with no adapter-specific size cap or MIME/charset whitelist.
+The existing proxy owns method, GET/HEAD body, and path validation.
 Responses are buffered, not streamed, and successful bodies retain the existing 20 MiB cap.
-SSE, protocol upgrades, binary/multipart/compressed requests, and native MCP remain unsupported.
+SSE, protocol upgrades, non-UTF-8 or compressed requests, and native MCP remain unsupported.
 See [the runtime API native passthrough contract](runtime-api.md#buffered-native-http-passthrough) for method, status, header, and error fallbacks.
 
 ## Long-running runs
