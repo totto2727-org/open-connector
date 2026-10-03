@@ -53,7 +53,14 @@ import { renderActionMarkdown } from "./api/action-markdown.ts";
 import { clearLocalAuthCookie, createLocalAuthMiddleware, readLocalAuthSession, readRuntimeGrant } from "./api/auth.ts";
 import { getResponseCachePolicy } from "./api/cache-policy.ts";
 import { createConnectionRoutes } from "./api/connection-routes.ts";
-import { HttpRequestError, internalError, jsonError, notFound, readJsonBody } from "./api/http-utils.ts";
+import {
+  HttpRequestError,
+  internalError,
+  jsonError,
+  notFound,
+  readJsonBody,
+  readPassthroughRequest,
+} from "./api/http-utils.ts";
 import { renderOAuthCompletionPage } from "./api/oauth-completion-page.ts";
 import { policyRequestMaxBytes, readRuntimePolicyRules, readTokenPolicy } from "./api/policy-input.ts";
 import { serializeRuntimeTriggerPermissions } from "./api/runtime-api.ts";
@@ -70,6 +77,8 @@ import {
   unknownServiceFailure,
   writeRuntimeActionHttpResult,
   writeRuntimeFailure,
+  writeRuntimePassthroughFailure,
+  writeRuntimePassthroughResponse,
   writeRuntimeSuccess,
 } from "./api/runtime-api.ts";
 import { renderSaasCompletionPage } from "./api/saas-completion-page.ts";
@@ -204,12 +213,23 @@ export class ConnectServer {
     app.get("/health", (context) => context.json({ ok: true }));
     if (this.options.compressApiResponses !== false) {
       // Compress dashboard JSON responses. Scoped to /api/* so the streaming
-      // /mcp transport and /v1/proxy pass-through are never buffered/re-encoded.
+      // /mcp transport and /v1 proxy responses are never additionally compressed.
       // The middleware's content-type filter already skips non-text bodies
       // (e.g. transit file downloads).
       app.use("/api/*", compress());
     }
-    app.use("*", createLocalAuthMiddleware(auth));
+    const authenticate = createLocalAuthMiddleware(auth);
+    app.use("*", async (context, next) => {
+      const response = await authenticate(context, next);
+      if (context.req.path.startsWith("/v1/passthrough/") && response instanceof Response && response.status === 401) {
+        return writeRuntimePassthroughFailure(context, {
+          status: 401,
+          errorCode: "unauthorized",
+          message: "A valid local bearer token is required.",
+        });
+      }
+      return response;
+    });
     if (this.options.marketplace) {
       app.get("/api/marketplace", (context) => context.json(this.options.marketplace!.getState()));
       app.get("/api/marketplace/discovery", (context) => this.getMarketplaceDiscovery(context));
@@ -258,6 +278,12 @@ export class ConnectServer {
       this.listRuntimeAppsByService(context, context.req.param("service")),
     );
     app.post("/v1/proxy/:service", (context) => this.createRuntimeProxyRequest(context, context.req.param("service")));
+    app.all("/v1/passthrough/:service", (context) =>
+      this.createRuntimePassthroughRequest(context, context.req.param("service")),
+    );
+    app.all("/v1/passthrough/:service/*", (context) =>
+      this.createRuntimePassthroughRequest(context, context.req.param("service")),
+    );
 
     app.get("/openapi.json", async (context) => {
       const { createOpenApiDocument } = await import("./api/openapi.ts");
@@ -419,6 +445,31 @@ export class ConnectServer {
     if (this.options.registerStaticRoutes) this.options.registerStaticRoutes(app);
     else app.notFound(notFound);
     app.onError((error, context) => {
+      if (context.req.path.startsWith("/v1/passthrough/")) {
+        if (error instanceof HttpRequestError || error instanceof SaasError) {
+          return writeRuntimePassthroughFailure(context, {
+            status: error.status,
+            errorCode: error.code,
+            message: error.message,
+          });
+        }
+        if (error instanceof ProviderDispatchRequestError) {
+          return writeRuntimePassthroughFailure(context, {
+            status: 429,
+            errorCode: "rate_limited",
+            message: error.message,
+          });
+        }
+        this.options.logger?.error(
+          { err: error, method: context.req.method, path: context.req.path },
+          "request failed",
+        );
+        return writeRuntimePassthroughFailure(context, {
+          status: 500,
+          errorCode: "internal_error",
+          message: "Internal server error.",
+        });
+      }
       if (error instanceof ProviderDispatchRequestError) {
         if (context.req.path.startsWith("/v1/"))
           return writeRuntimeFailure(context, {
@@ -1017,6 +1068,32 @@ export class ConnectServer {
       data: result.data,
       meta: result.meta,
     });
+  }
+
+  private async createRuntimePassthroughRequest(context: Context, service: string): Promise<Response> {
+    const input = await readPassthroughRequest(context);
+    let policy: ActionPolicySnapshot;
+    try {
+      policy = await this.getPolicySnapshot(context);
+    } catch {
+      return writeRuntimePassthroughFailure(context, {
+        status: 500,
+        errorCode: "internal_error",
+        message: "Runtime policy is unavailable.",
+      });
+    }
+    const result = await this.proxyRunner.run({
+      service,
+      input,
+      // Native query and body fields belong to the upstream API, not connection selection.
+      connectionName: optionalString(context.req.header("x-oo-connector-alias")),
+      connectionId: optionalString(context.req.header("x-oo-connector-app-id")),
+      policy,
+      signal: context.req.raw.signal,
+    });
+    return result.ok
+      ? writeRuntimePassthroughResponse(context, result.response)
+      : writeRuntimePassthroughFailure(context, result);
   }
 
   private async listRuntimeApps(context: Context): Promise<Response> {

@@ -38,6 +38,39 @@ const provider: ProviderDefinition = {
 };
 
 describe("action execution OpenAPI", () => {
+  it("documents native passthrough without envelope or query-based connection selection", () => {
+    const document = createOpenApiDocument([provider]);
+    for (const path of ["/v1/passthrough/{service}", "/v1/passthrough/{service}/{endpoint}"]) {
+      const operations = document.paths[path] as Record<
+        string,
+        {
+          description: string;
+          parameters: Array<{ name: string; in: string }>;
+          requestBody?: unknown;
+          responses: Record<string, unknown>;
+        }
+      >;
+      expect(Object.keys(operations)).toEqual(["get", "head", "post", "put", "patch", "delete"]);
+      for (const [method, operation] of Object.entries(operations)) {
+        expect(operation.parameters.some((parameter) => parameter.in === "query")).toBe(false);
+        expect(operation.parameters).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ name: "x-oo-connector-alias", in: "header" }),
+            expect.objectContaining({ name: "x-oo-connector-app-id", in: "header" }),
+          ]),
+        );
+        expect(operation.description).toContain("without an adapter-specific size cap");
+        expect(operation.description).toContain("Methods and paths are validated by the existing proxy");
+        expect(operation.description).not.toContain("1 MiB");
+        expect(operation.description).toContain("without a runtime envelope");
+        expect(operation.description).toContain("SSE");
+        expect(operation.description).toContain("CSP is sandbox");
+        expect(operation.requestBody !== undefined).toBe(method !== "get" && method !== "head");
+        expect(Object.keys(operation.responses)).toEqual(["default"]);
+      }
+    }
+  });
+
   it.each([
     ["generic", {}],
     ["concrete", { actionId: "example.echo" }],

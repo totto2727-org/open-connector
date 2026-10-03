@@ -1,15 +1,16 @@
 import type { RuntimeActionDefinition, RuntimeProviderDefinition } from "../../catalog-store.ts";
 import type { ConnectionError, ConnectionSummary, ManagedConnectionSummary } from "../../connection-service.ts";
 import type { ProviderAuthSetup } from "../../core/provider-setup.ts";
-import type { ExecutionResult, ProviderScenario } from "../../core/types.ts";
+import type { ExecutionResult, ProviderScenario, ProxyResponse } from "../../core/types.ts";
 import type { OAuthClientConfigSummary } from "../../oauth/oauth-client-config-service.ts";
 import type { TriggerPermission } from "../../triggers/metadata.ts";
 import type { Context } from "hono";
 
 import { optionalInteger, optionalString, optionalRecord, requiredRecord } from "../../core/cast.ts";
 import { describeProviderAuth } from "../../core/provider-setup.ts";
+import { filterPassthroughHeaders } from "./http-utils.ts";
 
-export type RuntimeStatus = 400 | 401 | 402 | 403 | 404 | 409 | 413 | 429 | 500 | 501 | 502 | 503 | 504;
+export type RuntimeStatus = 400 | 401 | 402 | 403 | 404 | 405 | 409 | 413 | 415 | 429 | 500 | 501 | 502 | 503 | 504;
 
 export type RuntimeResponseMeta = Record<string, unknown>;
 
@@ -170,6 +171,93 @@ export function writeRuntimeSuccess<TData>(context: Context, data: TData, meta?:
 
 export function writeRuntimeFailure(context: Context, input: RuntimeFailureInput): Response {
   return writeRuntimeActionHttpResult(context, serializeRuntimeFailure(input));
+}
+
+/** Return a buffered upstream response without the runtime success envelope or execution metadata. */
+export function writeRuntimePassthroughResponse(context: Context, response: ProxyResponse): Response {
+  if (!Number.isInteger(response.status) || response.status < 200 || response.status > 599) {
+    return writeRuntimePassthroughFailure(context, {
+      status: 502,
+      errorCode: "provider_error",
+      message: "Invalid upstream HTTP status.",
+    });
+  }
+  if (response.status >= 300 && response.status < 400 && response.status !== 304) {
+    return writeRuntimePassthroughFailure(context, {
+      status: 502,
+      errorCode: "provider_error",
+      message: "Upstream redirects are not supported by native passthrough.",
+    });
+  }
+  const headers = filterPassthroughHeaders(new Headers(response.headers), "response");
+  // Upstream HTML/SVG must not become an active application on the gateway's shared origin.
+  headers.set("content-security-policy", "sandbox");
+  headers.set("x-content-type-options", "nosniff");
+  const contentType = (headers.get("content-type") ?? "").toLowerCase();
+  if (contentType.split(";", 1)[0]?.trim() === "text/event-stream") {
+    return writeRuntimePassthroughFailure(context, {
+      status: 501,
+      errorCode: "unsupported_transport",
+      message: "Streaming event responses are not supported.",
+    });
+  }
+  let body: BodyInit | null;
+  if (context.req.method === "HEAD" || response.status === 204 || response.status === 205 || response.status === 304) {
+    body = null;
+  } else if (response.bodyEncoding === "base64") {
+    if (
+      typeof response.data !== "string" ||
+      response.data.length % 4 !== 0 ||
+      !/^[A-Za-z0-9+/]*={0,2}$/.test(response.data)
+    ) {
+      return writeRuntimePassthroughFailure(context, {
+        status: 502,
+        errorCode: "provider_error",
+        message: "Invalid upstream binary response.",
+      });
+    }
+    body = new Uint8Array(Buffer.from(response.data, "base64"));
+  } else if (contentType.includes("json")) {
+    body = JSON.stringify(response.data) ?? null;
+  } else if (typeof response.data === "string") {
+    body = response.data;
+  } else if (response.data == null) {
+    body = null;
+  } else {
+    headers.set("content-type", "application/json");
+    body = JSON.stringify(response.data);
+  }
+  return new Response(body, { status: response.status, headers });
+}
+
+/** Preserve recognizable upstream code/message errors without exposing runtime envelopes or private details. */
+export function writeRuntimePassthroughFailure(context: Context, input: RuntimeFailureInput): Response {
+  const upstreamStatus = optionalInteger(optionalRecord(input.data)?.status);
+  const status =
+    upstreamStatus !== undefined && upstreamStatus >= 400 && upstreamStatus <= 599 ? upstreamStatus : input.status;
+  let code = status;
+  let message = input.message;
+  if (upstreamStatus !== undefined) {
+    try {
+      const upstream = optionalRecord(JSON.parse(input.message));
+      const upstreamCode = optionalInteger(upstream?.code);
+      const upstreamMessage = optionalString(upstream?.message);
+      if (upstreamCode !== undefined && upstreamMessage !== undefined) {
+        code = upstreamCode;
+        message = upstreamMessage;
+      }
+    } catch {
+      // Unknown provider formats retain the safe native code/message fallback.
+    }
+  }
+  return new Response(context.req.method === "HEAD" ? null : JSON.stringify({ code, message }), {
+    status,
+    headers: {
+      "content-type": "application/json",
+      "content-security-policy": "sandbox",
+      "x-content-type-options": "nosniff",
+    },
+  });
 }
 
 /** Public 404 used when an action id is missing from the catalog. */

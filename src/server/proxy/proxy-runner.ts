@@ -112,6 +112,7 @@ export class ProxyRunner {
     };
     const startedAtMs = Date.now();
     let executionId: string | undefined;
+    let isSaasExecution = false;
     try {
       const connection = await this.options.connections.getConnectionSummary(
         provider.service,
@@ -144,9 +145,10 @@ export class ProxyRunner {
           message: targetDecision.message,
           meta: { service: provider.service },
         };
-      this.options.logger?.info(logContext, "proxy request started");
+      executionId = crypto.randomUUID();
+      this.options.logger?.info({ ...logContext, executionId }, "proxy request started");
       if (target.kind === "saas") {
-        executionId = crypto.randomUUID();
+        isSaasExecution = true;
         input.signal?.throwIfAborted();
         if (!this.options.saas) throw new SaasError("oauth_source_unavailable", "SaaS execution is unavailable.", 503);
         const { alias: _alias, connectionName: _connectionName, ...remoteRequest } = optionalRecord(input.input)!;
@@ -180,7 +182,7 @@ export class ProxyRunner {
           status: 501,
           errorCode: "proxy_not_supported",
           message: "Marketplace connections do not support proxy execution.",
-          meta: { service: provider.service },
+          meta: { service: provider.service, executionId },
         };
       const executor = await this.options.providerLoader.loadProxyExecutor(provider.service, provider.displayName);
       if (!executor)
@@ -189,7 +191,7 @@ export class ProxyRunner {
           status: 501,
           errorCode: "proxy_not_supported",
           message: `Proxy execution is not supported for ${provider.service}.`,
-          meta: { service: provider.service },
+          meta: { service: provider.service, executionId },
         };
       const result = await withProviderHttpDispatchResult(
         {
@@ -208,12 +210,13 @@ export class ProxyRunner {
       const durationMs = Date.now() - startedAtMs;
       if (result.ok) {
         this.options.logger?.info(
-          { ...logContext, durationMs, status: result.response.status },
+          { ...logContext, executionId, durationMs, status: result.response.status },
           "proxy request completed",
         );
         return {
           ok: true,
           response: result.response,
+          meta: { service: provider.service, executionId },
         };
       }
 
@@ -223,13 +226,17 @@ export class ProxyRunner {
         errorCode: result.error.code,
         message: result.error.message,
         data: result.error.details ?? null,
-        meta: { service: provider.service },
+        meta: { service: provider.service, executionId },
       };
-      this.options.logger?.warn({ ...logContext, durationMs, errorCode: failure.errorCode }, "proxy request failed");
+      this.options.logger?.warn(
+        { ...logContext, executionId, durationMs, errorCode: failure.errorCode },
+        "proxy request failed",
+      );
       return failure;
     } catch (error) {
       const durationMs = Date.now() - startedAtMs;
-      if (executionId && input.signal?.aborted)
+      // Local executors keep their existing abort error mapping even after an execution ID is issued.
+      if (isSaasExecution && input.signal?.aborted)
         return {
           ok: false,
           status: 400,
@@ -258,7 +265,7 @@ export class ProxyRunner {
           errorCode: "rate_limited",
           message: error.message,
           data: toProviderExecutionError(error, error.message).error?.details,
-          meta: { service: provider.service },
+          meta: { service: provider.service, executionId },
         };
       }
       if (error instanceof ConnectionError) {
@@ -270,7 +277,7 @@ export class ProxyRunner {
             status: 403,
             errorCode: missingConnectionDecision.code,
             message: missingConnectionDecision.message,
-            meta: { service: provider.service },
+            meta: { service: provider.service, executionId },
           };
         }
         const failure: ProxyRunFailure = {
@@ -278,19 +285,25 @@ export class ProxyRunner {
           status: mapConnectionErrorStatus(error),
           errorCode: error.code,
           message: error.message,
-          meta: { service: provider.service },
+          meta: { service: provider.service, executionId },
         };
-        this.options.logger?.warn({ ...logContext, durationMs, errorCode: failure.errorCode }, "proxy request failed");
+        this.options.logger?.warn(
+          { ...logContext, executionId, durationMs, errorCode: failure.errorCode },
+          "proxy request failed",
+        );
         return failure;
       }
 
-      this.options.logger?.warn({ ...logContext, durationMs, errorCode: "internal_error" }, "proxy request failed");
+      this.options.logger?.warn(
+        { ...logContext, executionId, durationMs, errorCode: "internal_error" },
+        "proxy request failed",
+      );
       return {
         ok: false,
         status: 500,
         errorCode: "internal_error",
         message: "Proxy request failed unexpectedly.",
-        meta: { service: provider.service },
+        meta: { service: provider.service, executionId },
       };
     }
   }

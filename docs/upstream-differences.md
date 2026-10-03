@@ -8,7 +8,7 @@ It is a fork-maintenance reference, not a work-progress log.
 
 The recorded upstream baseline is [`0535653ace7338adb346ccf564458eb7a57bdefd`](https://github.com/oomol-lab/open-connector/commit/0535653ace7338adb346ccf564458eb7a57bdefd).
 The existing local history was retained and merged with that upstream baseline in [`88b8488b761727d2319bb460817694da97288da9`](https://github.com/totto2727-org/open-connector/commit/88b8488b761727d2319bb460817694da97288da9), then published to the fork's `main` branch.
-The Monid implementation and this document are additional changes on the fork's `feat/monid-proxy` branch.
+The Monid provider and the buffered native HTTP adapter are additional maintained fork features.
 
 | Remote     | Repository                                            | Role                                                                       |
 | ---------- | ----------------------------------------------------- | -------------------------------------------------------------------------- |
@@ -17,6 +17,18 @@ The Monid implementation and this document are additional changes on the fork's 
 
 No pull request to the original repository is required for these fork-local changes.
 The virtual workspace maps this independent repository to `app/open-connector/` and ignores its contents at the workspace root.
+
+## Buffered native HTTP adapter and CLI compatibility
+
+The fork adds `/v1/passthrough/:service/*` alongside the existing envelope-based `/v1/proxy/:service` route.
+It reuses runtime authentication, proxy and connection grants, stored credentials, policy snapshots, provider dispatch, and SSRF-guarded egress, but accepts native HTTP method/path/query/text body and returns native buffered status/body.
+The intended consumer is the official Monid CLI using a gateway base URL, without a local HTTP relay.
+The adapter supports UTF-8 requests without adding a request size cap, MIME/charset whitelist, or duplicate method/path validation beyond the existing proxy.
+It does not support streaming, upgrades, non-UTF-8 or compressed requests, arbitrary destinations, cookie sessions, or byte-identical transport headers.
+Gateway-owned CSP sandbox and nosniff headers prevent upstream active content from becoming a same-origin application.
+Local provider proxy executions also gain a real correlated execution UUID and `meta.service`, fixing the official `oo` CLI's required response metadata without changing the existing envelope payload.
+Maintained regression coverage exercises native forwarding, grants, provider boundaries, unsafe inputs, active-content headers, and legacy envelope behavior.
+See [runtime API](runtime-api.md#buffered-native-http-passthrough) and [Monid integration](monid.md#native-cli-through-the-gateway) for the contract and live-verification limitations.
 
 ## Existing committed differences retained in the fork
 

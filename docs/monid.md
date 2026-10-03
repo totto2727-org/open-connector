@@ -77,7 +77,10 @@ OpenConnector returns its normal `/v1` JSON envelope.
       "status": "READY"
     }
   },
-  "meta": {}
+  "meta": {
+    "service": "monid",
+    "executionId": "<local-execution-uuid>"
+  }
 }
 ```
 
@@ -89,9 +92,38 @@ All ten documented API-key HTTP operations are routable through this provider: `
 
 The provider is intentionally proxy-only today, so `actions` is empty and OpenConnector does not expose a provider-specific action schema.
 
-This is API-key HTTP access to Monid's documented `/v1` API, not a direct SDK `baseURL`, transparent arbitrary HTTP proxy, MCP transport, SSE transport, native CLI base-URL replacement, OAuth flow, or x402 client.
+The envelope route is not a native CLI base URL.
+Use the separate buffered native route below for compatible CLI requests.
 
 Successful proxy response bodies are buffered by the shared runtime and capped at 20 MiB.
+
+## Native CLI through the gateway
+
+Set `MONID_API_BASE_URL` to `<gateway-origin>/v1/passthrough/monid` for the official `@monid-ai/cli@0.1.7` CLI.
+The CLI appends its documented `/v1` paths, and the gateway returns the native status and buffered body without the envelope above.
+Start with `whoami --json` before a billable `run`.
+
+```bash
+MONID_API_BASE_URL="$OPENCONNECTOR_URL/v1/passthrough/monid" \
+XDG_CONFIG_HOME="$MONID_GATEWAY_CONFIG_HOME" \
+vpx --silent @monid-ai/cli@0.1.7 whoami --json
+```
+
+The selected Monid CLI profile must contain the OpenConnector runtime token, not the saved provider API key.
+Monid CLI 0.1.7 does not read `MONID_API_KEY`, and its interactive key-registration command validates Monid-formatted keys.
+For gateway use, prepare a dedicated private XDG profile with the runtime token and an active key in the native CLI configuration, rather than replacing the user's normal Monid profile.
+The `monid` skill in `totto2727-org/agent` provides `scripts/configure-gateway.mjs` for that isolated profile.
+The helper only writes configuration and does not run a local HTTP relay.
+Keep credential files mode 0600 and profile directories mode 0700, and never print or commit them.
+
+The route shares the same `allowedProxies` and `allowedConnections` checks as the existing proxy.
+Gateway bearer credentials and cookies are stripped before the saved Monid API key is applied.
+Transferable headers are preserved where the existing engine allows it, but transport reconstruction and security headers differ.
+Requests must contain valid UTF-8, with no adapter-specific size cap or MIME/charset whitelist.
+The existing proxy owns method, GET/HEAD body, and path validation.
+Responses are buffered, not streamed, and successful bodies retain the existing 20 MiB cap.
+SSE, protocol upgrades, non-UTF-8 or compressed requests, and native MCP remain unsupported.
+See [the runtime API native passthrough contract](runtime-api.md#buffered-native-http-passthrough) for method, status, header, and error fallbacks.
 
 ## Long-running runs
 
@@ -128,4 +160,6 @@ It is separate from this OpenConnector provider proxy.
 
 The integration has focused tests for request forwarding, authentication, validation, response forwarding, and provider boundaries.
 
-No successful live API-key validation or end-to-end Monid run was performed, so this documentation does not claim every Monid behavior was independently verified against a live account.
+Live read-only identity validation through the existing envelope proxy succeeded, and upstream input errors and gateway authentication failures were observed.
+The native route has public server integration coverage with outbound transport fixtures, but that is not a deployed Monid run or proof of live search behavior.
+Deployment and an official CLI search/fetch acceptance check remain necessary before claiming live end-to-end support.

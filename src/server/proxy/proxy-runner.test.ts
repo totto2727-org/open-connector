@@ -9,6 +9,7 @@ import type {
   ResolvedCredential,
 } from "../../core/types.ts";
 import type { IProviderLoader } from "../../providers/provider-loader.ts";
+import type { SaasExecutionService } from "../../saas/saas-execution-service.ts";
 import type { Logger } from "../logger.ts";
 import type { ProxyFailureStatus } from "./proxy-runner.ts";
 
@@ -37,6 +38,7 @@ const credential: Extract<ResolvedCredential, { authType: "api_key" }> = {
 const connectionId = "11111111-1111-4111-8111-111111111111";
 const otherConnectionId = "22222222-2222-4222-8222-222222222222";
 const openPolicy = new ActionPolicyService().createSnapshot();
+const executionIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 interface CrossRouteErrorCase {
   title: string;
@@ -92,6 +94,211 @@ const proxyFailureStatusCases: ProxyFailureStatusCase[] = [
 ];
 
 describe("ProxyRunner", () => {
+  it("returns distinct local execution metadata correlated with start and completion logs", async () => {
+    const response = { status: 202, headers: { "content-type": "application/json" }, data: { accepted: true } };
+    const proxy: ProviderProxyExecutor = vi.fn(async (): Promise<ProxyExecutionResult> => ({ ok: true, response }));
+    const info = vi.fn();
+    const warn = vi.fn();
+    const runner = createRunner({
+      logger: { info, warn } as unknown as Logger,
+      providerLoader: new TestProviderLoader(proxy),
+    });
+    const executionIds = new Set<unknown>();
+
+    for (let index = 0; index < 2; index++) {
+      const result = await runner.run({
+        service: "example",
+        input: { endpoint: "/items", method: "GET" },
+        policy: openPolicy,
+      });
+
+      expect(result).toEqual({
+        ok: true,
+        response,
+        meta: { service: "example", executionId: expect.stringMatching(executionIdPattern) },
+      });
+      executionIds.add(result.meta?.executionId);
+      expect(info).toHaveBeenNthCalledWith(
+        index * 2 + 1,
+        expect.objectContaining(result.meta!),
+        "proxy request started",
+      );
+      expect(info).toHaveBeenNthCalledWith(
+        index * 2 + 2,
+        expect.objectContaining({ ...result.meta, status: 202, durationMs: expect.any(Number) }),
+        "proxy request completed",
+      );
+    }
+
+    expect(executionIds.size).toBe(2);
+    expect(proxy).toHaveBeenCalledTimes(2);
+    expect(info).toHaveBeenCalledTimes(4);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it.each(["returned", "thrown"])("correlates local %s failures with the issued execution ID", async (kind) => {
+    const proxy: ProviderProxyExecutor = vi.fn(async (): Promise<ProxyExecutionResult> => {
+      if (kind === "thrown") throw new Error("private provider details");
+      return { ok: false, error: { code: "rate_limited", message: "Rate limit exceeded.", details: { status: 429 } } };
+    });
+    const info = vi.fn();
+    const warn = vi.fn();
+    const runner = createRunner({
+      logger: { info, warn } as unknown as Logger,
+      providerLoader: new TestProviderLoader(proxy),
+    });
+
+    const result = await runner.run({
+      service: "example",
+      input: { endpoint: "/items", method: "GET" },
+      policy: openPolicy,
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      status: kind === "thrown" ? 500 : 429,
+      errorCode: kind === "thrown" ? "internal_error" : "rate_limited",
+      meta: { service: "example", executionId: expect.stringMatching(executionIdPattern) },
+    });
+    expect(info).toHaveBeenCalledExactlyOnceWith(expect.objectContaining(result.meta!), "proxy request started");
+    expect(warn).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ ...result.meta, durationMs: expect.any(Number) }),
+      "proxy request failed",
+    );
+    expect(JSON.stringify(warn.mock.calls)).not.toContain("private provider details");
+  });
+
+  it("preserves SaaS response metadata and cancellation with correlated local logs", async () => {
+    const connections = createConnections();
+    const summary = (await connections.getConnectionSummary("example"))!;
+    const reference = {
+      managedProjectId: "project-1",
+      providerConfigId: "config-1",
+      externalUserId: "user-1",
+      connectedAccountId: "account-1",
+      localRequestId: "request-1",
+    };
+    vi.mocked(connections.resolveForExecution).mockResolvedValue({
+      kind: "saas",
+      summary: { ...summary, status: "active", comment: null },
+      reference,
+    });
+    const response = { status: 201, headers: { "content-type": "application/json" }, data: { remote: true } };
+    const executeProxy = vi.fn(async () => ({ response, executionId: "remote-execution-1" }));
+    const loadProxyExecutor = vi.fn();
+    const info = vi.fn();
+    const runner = createRunner({
+      connections,
+      saas: { executeProxy } as unknown as SaasExecutionService,
+      logger: { info, warn: vi.fn() } as unknown as Logger,
+      providerLoader: {
+        loadActionExecutor: async () => undefined,
+        loadCredentialValidators: async () => undefined,
+        loadProxyExecutor,
+      },
+    });
+
+    const result = await runner.run({
+      service: "example",
+      input: { endpoint: "/items", method: "post", body: { name: "item" } },
+      policy: openPolicy,
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      response,
+      meta: {
+        service: "example",
+        executionId: expect.stringMatching(executionIdPattern),
+        remoteExecutionId: "remote-execution-1",
+      },
+    });
+    expect(info).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ service: "example", executionId: result.meta?.executionId }),
+      "proxy request started",
+    );
+    expect(info).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ ...result.meta, status: 201 }),
+      "proxy request completed",
+    );
+    expect(executeProxy).toHaveBeenCalledExactlyOnceWith(
+      reference,
+      "example",
+      { endpoint: "/items", method: "POST", body: { name: "item" } },
+      undefined,
+    );
+    expect(loadProxyExecutor).not.toHaveBeenCalled();
+
+    const controller = new AbortController();
+    executeProxy.mockImplementationOnce(async () => {
+      controller.abort();
+      controller.signal.throwIfAborted();
+      throw new Error("Expected cancellation to throw");
+    });
+    const cancelled = await runner.run({
+      service: "example",
+      input: { endpoint: "/items", method: "GET" },
+      policy: openPolicy,
+      signal: controller.signal,
+    });
+
+    expect(cancelled).toEqual({
+      ok: false,
+      status: 400,
+      errorCode: "execution_cancelled",
+      message: "Proxy execution was cancelled.",
+      meta: { service: "example", executionId: expect.stringMatching(executionIdPattern) },
+    });
+    expect(cancelled.meta?.executionId).not.toBe(result.meta?.executionId);
+    expect(info).toHaveBeenNthCalledWith(3, expect.objectContaining(cancelled.meta!), "proxy request started");
+    expect(info).toHaveBeenCalledTimes(3);
+    expect(loadProxyExecutor).not.toHaveBeenCalled();
+  });
+
+  it.each(["proxy", "connection"])("does not issue an execution ID or fetch when %s policy denies", async (kind) => {
+    const fetcher = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Unexpected provider fetch"));
+    const randomUUID = vi.spyOn(crypto, "randomUUID");
+    try {
+      const proxy: ProviderProxyExecutor = vi.fn(
+        async (): Promise<ProxyExecutionResult> => ({
+          ok: true,
+          response: { status: 200, headers: {}, data: null },
+        }),
+      );
+      const info = vi.fn();
+      const runner = createRunner({
+        logger: { info, warn: vi.fn() } as unknown as Logger,
+        providerLoader: new TestProviderLoader(proxy),
+      });
+      const policy =
+        kind === "proxy"
+          ? new ActionPolicyService({ allowedProxies: ["other"] }).createSnapshot()
+          : new ActionPolicyService().createSnapshot(undefined, {
+              allowedActions: [],
+              blockedActions: [],
+              allowedProxies: ["example"],
+              allowedConnections: [otherConnectionId],
+            });
+
+      const result = await runner.run({ service: "example", input: { endpoint: "/items", method: "GET" }, policy });
+      expect(result).toMatchObject({
+        ok: false,
+        status: 403,
+        errorCode: kind === "proxy" ? "proxy_not_allowed" : "connection_not_allowed",
+      });
+      expect(result.meta).toEqual({ service: "example" });
+      expect(proxy).not.toHaveBeenCalled();
+      expect(fetcher).not.toHaveBeenCalled();
+      expect(randomUUID).not.toHaveBeenCalled();
+      expect(info).not.toHaveBeenCalled();
+    } finally {
+      fetcher.mockRestore();
+      randomUUID.mockRestore();
+    }
+  });
+
   it("returns proxy_not_supported after selecting a local connection without a proxy executor", async () => {
     const connections = createConnections();
     const runner = createRunner({
@@ -470,6 +677,7 @@ describe("ProxyRunner", () => {
         headers: { "content-type": "application/json" },
         data: { accepted: true },
       },
+      meta: { service: "example", executionId: expect.stringMatching(executionIdPattern) },
     });
 
     expect(proxy).toHaveBeenCalledWith(
@@ -548,7 +756,7 @@ describe("ProxyRunner", () => {
       status: 500,
       errorCode: "internal_error",
       message: "Proxy request failed unexpectedly.",
-      meta: { service: "example" },
+      meta: { service: "example", executionId: expect.stringMatching(executionIdPattern) },
     });
   });
 
@@ -581,7 +789,7 @@ describe("ProxyRunner", () => {
       errorCode: "internal_error",
       message: "provider request failed",
       data: null,
-      meta: { service: "example" },
+      meta: { service: "example", executionId: expect.stringMatching(executionIdPattern) },
     });
   });
 
@@ -681,7 +889,7 @@ describe("ProxyRunner", () => {
       status: 500,
       errorCode: "internal_error",
       message: "Proxy request failed unexpectedly.",
-      meta: { service: "example" },
+      meta: { service: "example", executionId: expect.stringMatching(executionIdPattern) },
     });
   });
 
@@ -864,12 +1072,14 @@ function createRunner(input: {
   logger?: Logger;
   provider?: ProviderDefinition;
   providerLoader: IProviderLoader;
+  saas?: SaasExecutionService;
 }): ProxyRunner {
   return new ProxyRunner({
     catalog: { providers: [input.provider ?? provider] } as CatalogStore,
     connections: input.connections ?? createConnections(),
     logger: input.logger,
     providerLoader: input.providerLoader,
+    saas: input.saas,
   });
 }
 
