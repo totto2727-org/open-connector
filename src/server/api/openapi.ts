@@ -375,6 +375,8 @@ export function createOpenApiDocument(
     "/api/files/{fileId}": createTransitFilePath(),
     "/v1/actions/{actionId}": runPath,
     "/v1/proxy/{service}": createProxyPath(),
+    "/v1/passthrough/{service}": createPassthroughPath(false),
+    "/v1/passthrough/{service}/{endpoint}": createPassthroughPath(true),
     "/v1/providers/{service}/trigger-permissions": runtimeGetOperation(
       "Triggers",
       "Read provider-native Trigger permission guidance.",
@@ -1361,6 +1363,66 @@ function createProxyPath(): Record<string, unknown> {
       },
     },
   };
+}
+
+function createPassthroughPath(hasEndpoint: boolean): Record<string, unknown> {
+  const parameters = [
+    { name: "service", in: "path", required: true, schema: jsonSchema.string("Provider service identifier.") },
+    {
+      name: "x-oo-connector-alias",
+      in: "header",
+      required: false,
+      schema: jsonSchema.string("Named connection. Defaults to the provider's default connection."),
+    },
+    {
+      name: "x-oo-connector-app-id",
+      in: "header",
+      required: false,
+      schema: jsonSchema.string("Stable connection ID. Subject to the runtime token connection grant."),
+    },
+  ];
+  if (hasEndpoint) {
+    parameters.push({
+      name: "endpoint",
+      in: "path",
+      required: true,
+      schema: jsonSchema.string("Provider-relative endpoint suffix, including nested path segments."),
+    });
+  }
+  const path: Record<string, unknown> = {};
+  for (const method of ["get", "head", "post", "put", "patch", "delete"]) {
+    const operation: Record<string, unknown> = {
+      tags: ["Proxy"],
+      summary: "Forward one buffered native provider HTTP request.",
+      description:
+        "Uses the same authentication, proxy policy, connection grants, stored credentials, and guarded provider egress as /v1/proxy. Returns the upstream status and buffered body without a runtime envelope. The root route forwards /. All query parameters belong to the upstream API; select connections only with headers. Request bodies are bounded to 1 MiB of valid UTF-8 text, JSON, XML, or URL-encoded form data. Compression, multipart/binary requests, SSE, and upgrades are unsupported. Encoded separators and nested path escapes are rejected. Provider-specific limits still apply; SaaS connections reject HEAD. Authentication, cookies, selection, hop-by-hop, and reconstructed-body headers are filtered. Response CSP is sandbox and X-Content-Type-Options is nosniff. Upstream CORS, cache overrides, origin-control, reporting, and Refresh headers are stripped; gateway no-store remains authoritative. Unexpected native 3xx responses other than 304 are rejected with 502. JSON formatting and transport headers are not byte-identical. Known upstream numeric code/string message errors are decoded; other failures use a native code/message fallback. Failed calls are not automatically replayed.",
+      parameters,
+      responses: {
+        default: {
+          description:
+            "Upstream HTTP status and buffered JSON, text, or binary response; HEAD and no-content statuses have no body. Gateway failures return application/json with numeric code and string message. Unsupported methods return 405, media types 415, large requests 413, and streaming or upgrades 501.",
+          content: {
+            "application/json": { schema: jsonSchema.unknown("Native upstream JSON or gateway code/message error.") },
+            "text/plain": { schema: { type: "string" } },
+            "application/octet-stream": { schema: { type: "string", format: "binary" } },
+          },
+        },
+      },
+    };
+    if (method !== "get" && method !== "head") {
+      operation.requestBody = {
+        required: false,
+        content: {
+          "application/json": { schema: jsonSchema.unknown("Native JSON, bounded to 1 MiB of UTF-8.") },
+          "text/plain": { schema: { type: "string" } },
+          "application/xml": { schema: { type: "string" } },
+          "application/x-www-form-urlencoded": { schema: { type: "string" } },
+        },
+      };
+    }
+    path[method] = operation;
+  }
+  return path;
 }
 
 function createConnectionPath(): Record<string, unknown> {

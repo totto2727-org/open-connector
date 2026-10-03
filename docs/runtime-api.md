@@ -400,6 +400,7 @@ by age.
 - `GET /v1/apps/services/:service`
 - `GET /v1/apps/authenticated`
 - `POST /v1/proxy/:service`
+- `DELETE|GET|HEAD|PATCH|POST|PUT /v1/passthrough/:service/*`
 
 `GET /v1/apps/authenticated` checks the repeated `service` query values and returns the authenticated
 service IDs from that candidate set. It returns an empty list when no candidates are supplied.
@@ -441,6 +442,42 @@ enforced on `/v1/proxy/:service` the same way as actions: omitted alias uses tha
 default connection, a non-empty grant is an exact stable-ID allowlist, and ungranted connections
 return `403 connection_not_allowed` before lookup. Pure `no_auth` proxies do not require a connection
 grant.
+
+### Buffered native HTTP passthrough
+
+`/v1/passthrough/:service/*` accepts the upstream method, path suffix, query, and body directly instead of the JSON request wrapper used by `/v1/proxy/:service`.
+The root `/v1/passthrough/:service` forwards `/`.
+For example, `GET /v1/passthrough/monid/v1/auth/whoami` forwards `GET /v1/auth/whoami` to the configured Monid provider.
+It uses the same runtime authentication, proxy policy, persistent token grants, connection selection, stored credentials, and guarded provider egress as the existing proxy.
+There is no arbitrary destination URL or direct-provider fallback.
+
+Use `x-oo-connector-alias` or `x-oo-connector-app-id` for connection selection.
+All query parameters, including `alias` and `connectionName`, are upstream data on this route.
+Repeated query parameters and UTF-8 request text are preserved without JSON re-encoding.
+Caller authorization, cookies, gateway selection headers, forwarding headers, and hop-by-hop headers are removed before the provider applies its own saved credentials.
+
+Successful responses carry the upstream HTTP status and buffered JSON, text, or decoded binary body, without `success`, `data`, or `meta` wrappers.
+HEAD and no-content statuses have no response body.
+Recognizable upstream numeric `code` and string `message` errors are decoded from the existing provider error result.
+Other failures return a native `{ "code": <HTTP status>, "message": <safe error text> }` fallback, not an exact upstream error document or headers.
+Neither route automatically retries failed requests.
+Local executions on the existing envelope route now include correlated `meta.service` and `meta.executionId`, compatible with the official `oo` CLI proxy response schema.
+
+This is a pragmatic CLI/JSON API adapter, not a byte-identical transport proxy.
+Requests are limited to 1 MiB of valid UTF-8 text, JSON, XML, or URL-encoded form data.
+GET and HEAD must not have bodies, and SaaS connections do not support HEAD.
+Unsupported methods return 405, oversized requests 413, unsupported or compressed media 415, and SSE or protocol upgrades 501.
+Multipart and binary request bodies, encoded path separators, and nested path escapes are rejected.
+Provider-specific deadlines and response caps still apply, including the shared local proxy's 20 MiB successful response cap.
+An unexpected SSE response is rejected after the existing bounded buffered read, not handled as a stream.
+
+Response hop-by-hop headers, `Set-Cookie`, stale `Content-Length`, and `Content-Encoding` are stripped.
+Upstream CORS, shared-cache override, origin storage/routing/reporting, service-worker, and `Refresh` headers are not inherited by the gateway.
+The existing gateway cache policy remains `Cache-Control: no-store`.
+Provider redirects are handled by the existing guarded engine; an unexpected native 3xx response other than 304 is rejected with 502 instead of redirecting the caller's gateway bearer to another endpoint.
+JSON formatting and compressed wire bytes may change because the existing engine decodes and buffers the response.
+The gateway overrides upstream `Content-Security-Policy` with `sandbox` and `X-Content-Type-Options` with `nosniff` so HTML/SVG cannot execute as a same-origin gateway application.
+SSE, WebSocket, native MCP, cookie-dependent browser sessions, and exact transport fidelity are not supported by this route.
 
 ## Local Admin Endpoints
 

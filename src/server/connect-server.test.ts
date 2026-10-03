@@ -39,6 +39,10 @@ import { buildActionSearchIndex } from "../core/action-search.ts";
 import { MarketplaceError, MarketplaceService } from "../marketplace/marketplace-service.ts";
 import { OAuthClientConfigService } from "../oauth/oauth-client-config-service.ts";
 import { OAuthFlowService } from "../oauth/oauth-flow-service.ts";
+import { provider as monidProvider } from "../providers/monid/definition.ts";
+import { ProviderLoader } from "../providers/provider-loader.ts";
+import { defineProviderProxy } from "../providers/provider-runtime.ts";
+import { executorModules } from "../providers/registry.generated.ts";
 import { actionInputMaxDepth, hashActionRequest, hashIdempotencyKey } from "./actions/action-idempotency.ts";
 import { ActionRunner } from "./actions/action-runner.ts";
 import { registerStaticRoutes } from "./api/static-routes.ts";
@@ -3429,6 +3433,676 @@ describe("ConnectServer", () => {
     });
   });
 
+  describe("native HTTP passthrough", () => {
+    it("preserves accepted run output through the registered Monid provider and native gateway authentication", async () => {
+      const accepted = { runId: "run-123", status: "READY", provider: "apify", endpoint: "/apidojo/tweet-scraper" };
+      const transport = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(Response.json({ user: { userId: "test-monid-user", username: "Test User" } }))
+        .mockResolvedValueOnce(Response.json(accepted, { status: 202, headers: { "x-request-id": "req-async" } }));
+      vi.stubGlobal("fetch", transport);
+      const app = await createMonidPassthroughTestApp();
+      const body =
+        '{"provider":"apify","endpoint":"/apidojo/tweet-scraper","input":{"body":{"searchTerms":["AI"],"maxItems":10}}}';
+      const response = await app.request("/v1/passthrough/monid/v1/run", {
+        method: "POST",
+        headers: { authorization: "Bearer gateway-token", "content-type": "application/json" },
+        body,
+      });
+      expect(response.status).toBe(202);
+      await expect(response.json()).resolves.toEqual(accepted);
+      expect(response.headers.get("x-request-id")).toBe("req-async");
+      expect(transport).toHaveBeenCalledTimes(2);
+      expect(String(transport.mock.calls[0]?.[0])).toBe("https://api.monid.ai/v1/auth/whoami");
+      expect(String(transport.mock.calls[1]?.[0])).toBe("https://api.monid.ai/v1/run");
+      expect(transport.mock.calls[1]?.[1]?.body).toBe(body);
+      expect(new Headers(transport.mock.calls[1]?.[1]?.headers).get("authorization")).toBe("Bearer monid_saved_key");
+    });
+
+    it("forwards discovery and run polling through the registered Monid provider without a runtime envelope", async () => {
+      // Consumer-shaped synthetic fixtures, not captured live Monid responses.
+      const discovery = {
+        count: 1,
+        results: [
+          {
+            provider: "apify",
+            endpoint: "/apidojo/tweet-scraper",
+            description: "Synthetic test endpoint",
+            price: { type: "FREE" },
+            tags: [],
+          },
+        ],
+      };
+      const run = {
+        runId: "run-123",
+        status: "COMPLETED",
+        provider: "apify",
+        endpoint: "/apidojo/tweet-scraper",
+        createdAt: "2026-10-03T00:00:00.000Z",
+        completedAt: "2026-10-03T00:00:01.000Z",
+        providerResponse: { httpStatus: 200, data: { items: [{ title: "Synthetic result" }] } },
+      };
+      const transport = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(Response.json({ user: { userId: "test-monid-user" } }))
+        .mockResolvedValueOnce(Response.json(discovery))
+        .mockResolvedValueOnce(Response.json(run));
+      vi.stubGlobal("fetch", transport);
+      const app = await createMonidPassthroughTestApp();
+      const body = '{"query":"twitter posts","limit":5}';
+      const discovered = await app.request("/v1/passthrough/monid/v1/discover", {
+        method: "POST",
+        headers: { authorization: "Bearer gateway-token", "content-type": "application/json" },
+        body,
+      });
+      expect(discovered.status).toBe(200);
+      await expect(discovered.json()).resolves.toEqual(discovery);
+      const polled = await app.request("/v1/passthrough/monid/v1/runs/run-123?tag=a&tag=b", {
+        headers: { authorization: "Bearer gateway-token" },
+      });
+      expect(polled.status).toBe(200);
+      await expect(polled.json()).resolves.toEqual(run);
+      expect(String(transport.mock.calls[1]?.[0])).toBe("https://api.monid.ai/v1/discover");
+      expect(transport.mock.calls[1]?.[1]?.body).toBe(body);
+      expect(String(transport.mock.calls[2]?.[0])).toBe("https://api.monid.ai/v1/runs/run-123?tag=a&tag=b");
+      expect(transport.mock.calls[2]?.[1]?.method).toBe("GET");
+      expect(transport.mock.calls[2]?.[1]?.body).toBeUndefined();
+      expect(transport).toHaveBeenCalledTimes(3);
+    });
+
+    it("preserves registered Monid HTTP 401 for a synthetic nested error without gateway metadata", async () => {
+      const upstreamMessage = JSON.stringify({ error: { code: "AUTH_FAILED", message: "Invalid API key" } });
+      const transport = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(Response.json({ user: { userId: "test-monid-user" } }))
+        .mockResolvedValueOnce(
+          new Response(upstreamMessage, { status: 401, headers: { "content-type": "application/json" } }),
+        );
+      vi.stubGlobal("fetch", transport);
+      const app = await createMonidPassthroughTestApp();
+      const response = await app.request("/v1/passthrough/monid/v1/wallet/balance", {
+        headers: { authorization: "Bearer gateway-token" },
+      });
+      expect(response.status).toBe(401);
+      await expect(response.json()).resolves.toEqual({ code: 401, message: upstreamMessage });
+      expect(new Headers(transport.mock.calls[1]?.[1]?.headers).get("authorization")).toBe("Bearer monid_saved_key");
+    });
+
+    it("decodes the observed Monid invalid-inspect code/message shape through the registered provider", async () => {
+      const upstream = {
+        code: 400,
+        message:
+          "provider: Invalid input: expected string, received undefined, endpoint: Invalid input: expected string, received undefined",
+      };
+      const transport = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(Response.json({ user: { userId: "test-monid-user" } }))
+        .mockResolvedValueOnce(Response.json(upstream, { status: 400 }));
+      vi.stubGlobal("fetch", transport);
+      const app = await createMonidPassthroughTestApp();
+      const response = await app.request("/v1/passthrough/monid/v1/inspect", {
+        method: "POST",
+        headers: { authorization: "Bearer gateway-token", "content-type": "application/json" },
+        body: "{}",
+      });
+      expect(response.status).toBe(400);
+      expect(response.headers.get("content-security-policy")).toBe("sandbox");
+      expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+      await expect(response.json()).resolves.toEqual(upstream);
+    });
+
+    it("rejects unauthenticated registered Monid requests at the gateway before egress", async () => {
+      const transport = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(Response.json({ user: { userId: "test-monid-user" } }));
+      vi.stubGlobal("fetch", transport);
+      const app = await createMonidPassthroughTestApp();
+      transport.mockClear();
+      const response = await app.request("/v1/passthrough/monid/v1/auth/whoami");
+      expect(response.status).toBe(401);
+      expect(response.headers.get("content-security-policy")).toBe("sandbox");
+      expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+      await expect(response.json()).resolves.toEqual({ code: 401, message: "A valid local bearer token is required." });
+      expect(transport).not.toHaveBeenCalled();
+    });
+
+    it("retains the registered Monid v1 endpoint allowlist before outbound transport", async () => {
+      const transport = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(Response.json({ user: { userId: "test-monid-user" } }));
+      vi.stubGlobal("fetch", transport);
+      const app = await createMonidPassthroughTestApp();
+      transport.mockClear();
+      const response = await app.request("/v1/passthrough/monid/v2/wallet/balance", {
+        headers: { authorization: "Bearer gateway-token" },
+      });
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual({
+        code: 400,
+        message: "endpoint is not supported for this provider",
+      });
+      expect(transport).not.toHaveBeenCalled();
+    });
+
+    it("forwards native POST query and UTF-8 JSON exactly once while filtering credentials and transport headers", async () => {
+      const transport = vi.fn<typeof fetch>(
+        async () =>
+          new Response('{"created":true}', {
+            status: 201,
+            headers: {
+              "content-type": "application/json",
+              "content-length": "999",
+              "content-encoding": "gzip",
+              connection: "keep-alive, x-upstream-hop",
+              "x-upstream-hop": "private",
+              "keep-alive": "timeout=5",
+              "transfer-encoding": "chunked",
+              "set-cookie": "upstream-session=secret; Path=/",
+              refresh: "0; url=/v1/actions/example.echo",
+              "access-control-allow-origin": "*",
+              "access-control-allow-credentials": "true",
+              "access-control-expose-headers": "*",
+              "cache-control": "public, max-age=86400",
+              "cloudflare-cdn-cache-control": "public, max-age=86400",
+              "cdn-cache-control": "public, max-age=86400",
+              "surrogate-control": "max-age=86400",
+              "clear-site-data": '"cookies", "storage"',
+              "strict-transport-security": "max-age=86400; includeSubDomains",
+              "alt-svc": 'h3="malicious.example:443"',
+              "report-to": '{"group":"upstream","endpoints":[{"url":"https://upstream.example/report"}]}',
+              "reporting-endpoints": 'upstream="https://upstream.example/report"',
+              nel: '{"report_to":"upstream","max_age":86400}',
+              "service-worker-allowed": "/",
+              "x-request-id": "upstream-123",
+            },
+          }),
+      );
+      vi.stubGlobal("fetch", transport);
+      const app = await createPassthroughTestApp({
+        auth: { adminToken: "admin-token", runtimeToken: "gateway-token" },
+      });
+      const body = '{ "name": "日本語", "alias": "upstream-field" }';
+      const response = await app.request(
+        "/v1/passthrough/example/items?tag=a&tag=b&value=%2B+%20&alias=upstream-query",
+        {
+          method: "POST",
+          headers: {
+            authorization: "Bearer gateway-token",
+            cookie: "gateway-session=secret",
+            "proxy-authorization": "Basic gateway-proxy-secret",
+            "x-oo-connector-alias": "default",
+            "x-oo-connector-internal": "private",
+            host: "gateway.example",
+            "content-type": "application/json; charset=utf-8",
+            "content-length": "999",
+            "content-encoding": "identity",
+            connection: "keep-alive, x-client-hop",
+            "x-client-hop": "private",
+            "keep-alive": "timeout=5",
+            te: "trailers",
+            trailer: "x-trailer",
+            "transfer-encoding": "chunked",
+            "x-forwarded-for": "127.0.0.1",
+            accept: "application/json",
+            "x-native-client": "monid",
+          },
+          body,
+        },
+      );
+      expect(response.status).toBe(201);
+      await expect(response.json()).resolves.toEqual({ created: true });
+      expect(response.headers.get("x-request-id")).toBe("upstream-123");
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      for (const name of [
+        "content-length",
+        "content-encoding",
+        "connection",
+        "keep-alive",
+        "transfer-encoding",
+        "set-cookie",
+        "refresh",
+        "access-control-allow-origin",
+        "access-control-allow-credentials",
+        "access-control-expose-headers",
+        "cloudflare-cdn-cache-control",
+        "cdn-cache-control",
+        "surrogate-control",
+        "clear-site-data",
+        "strict-transport-security",
+        "alt-svc",
+        "report-to",
+        "reporting-endpoints",
+        "nel",
+        "service-worker-allowed",
+        "x-upstream-hop",
+      ]) {
+        expect(response.headers.has(name)).toBe(false);
+      }
+      expect(transport).toHaveBeenCalledTimes(1);
+      const [target, init] = transport.mock.calls[0]!;
+      expect(String(target)).toBe("https://example.com/api/items?tag=a&tag=b&value=%2B+%20&alias=upstream-query");
+      expect(init?.method).toBe("POST");
+      expect(init?.body).toBe(body);
+      const upstreamHeaders = new Headers(init?.headers);
+      expect(upstreamHeaders.get("authorization")).toBe("Bearer example-key");
+      expect(upstreamHeaders.get("x-native-client")).toBe("monid");
+      for (const name of [
+        "cookie",
+        "proxy-authorization",
+        "host",
+        "content-length",
+        "content-encoding",
+        "connection",
+        "keep-alive",
+        "te",
+        "trailer",
+        "transfer-encoding",
+        "x-client-hop",
+        "x-oo-connector-alias",
+        "x-oo-connector-internal",
+        "x-forwarded-for",
+      ]) {
+        expect(upstreamHeaders.has(name)).toBe(false);
+      }
+      expect(JSON.stringify(init)).not.toContain("gateway-token");
+    });
+
+    it.each(["GET", "HEAD"])("forwards native %s without a request body", async (method) => {
+      const transport = vi.fn<typeof fetch>(
+        async () => new Response("native text", { headers: { "content-type": "text/plain", "content-length": "11" } }),
+      );
+      vi.stubGlobal("fetch", transport);
+      const app = await createPassthroughTestApp();
+      const response = await app.request("/v1/passthrough/example/items?limit=2&limit=3", { method });
+      expect(response.status).toBe(200);
+      expect(await response.text()).toBe(method === "HEAD" ? "" : "native text");
+      expect(transport.mock.calls[0]?.[1]?.method).toBe(method);
+      expect(transport.mock.calls[0]?.[1]?.body).toBeUndefined();
+      expect(response.headers.has("content-length")).toBe(false);
+    });
+
+    it.each(["DELETE", "PATCH", "PUT"])("supports native %s and empty upstream responses", async (method) => {
+      const transport = vi.fn<typeof fetch>(async () => new Response(null, { status: 204 }));
+      vi.stubGlobal("fetch", transport);
+      const app = await createPassthroughTestApp();
+      const response = await app.request("/v1/passthrough/example/items", { method });
+      expect(response.status).toBe(204);
+      expect(await response.text()).toBe("");
+      expect(transport.mock.calls[0]?.[1]?.method).toBe(method);
+    });
+
+    it("supports the provider root and JSON scalar responses", async () => {
+      const transport = vi.fn<typeof fetch>(
+        async () => new Response('"native scalar"', { headers: { "content-type": "application/json" } }),
+      );
+      vi.stubGlobal("fetch", transport);
+      const app = await createPassthroughTestApp();
+      const response = await app.request("/v1/passthrough/example?tag=a&tag=b");
+      expect(String(transport.mock.calls[0]?.[0])).toBe("https://example.com/api/?tag=a&tag=b");
+      await expect(response.json()).resolves.toBe("native scalar");
+    });
+
+    it.each([302, 304])("rejects native custom proxy redirects except not-modified status %s", async (status) => {
+      const app = createTestServer([apiKeyProvider], {
+        providerLoader: new ProxyProviderLoader(async () => ({
+          ok: true,
+          response: {
+            status,
+            headers: {
+              "content-type": "text/plain",
+              location: "/v1/actions/example.echo",
+              refresh: "0; url=/v1/actions/example.echo",
+              etag: "upstream-etag",
+            },
+            data: "private redirect body",
+          },
+        })),
+      }).createApp();
+      await app.request("/api/connections/example", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ authType: "api_key", values: { apiKey: "example-key" } }),
+      });
+      const response = await app.request("/v1/passthrough/example/items");
+      expect(response.headers.has("refresh")).toBe(false);
+      if (status === 304) {
+        expect(response.status).toBe(304);
+        expect(await response.text()).toBe("");
+        expect(response.headers.get("etag")).toBe("upstream-etag");
+      } else {
+        expect(response.status).toBe(502);
+        expect(response.headers.has("location")).toBe(false);
+        await expect(response.json()).resolves.toEqual({
+          code: 502,
+          message: "Upstream redirects are not supported by native passthrough.",
+        });
+      }
+    });
+
+    it("decodes buffered binary responses and removes reconstruction headers", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn<typeof fetch>(
+          async () =>
+            new Response(new Uint8Array([0, 255, 128, 65]), {
+              headers: {
+                "content-type": "application/octet-stream",
+                "content-length": "4",
+                "content-encoding": "gzip",
+              },
+            }),
+        ),
+      );
+      const app = await createPassthroughTestApp();
+      const response = await app.request("/v1/passthrough/example/download");
+      expect(response.status).toBe(200);
+      expect(new Uint8Array(await response.arrayBuffer())).toEqual(new Uint8Array([0, 255, 128, 65]));
+      expect(response.headers.get("content-type")).toBe("application/octet-stream");
+      expect(response.headers.has("content-length")).toBe(false);
+      expect(response.headers.has("content-encoding")).toBe(false);
+    });
+
+    it.each([400, 401, 409, 503])(
+      "returns known upstream JSON errors with native HTTP %s and no runtime envelope",
+      async (status) => {
+        vi.stubGlobal(
+          "fetch",
+          vi.fn<typeof fetch>(
+            async () =>
+              new Response(
+                JSON.stringify({
+                  code: status,
+                  message: "Invalid native input",
+                  meta: { private: true },
+                  details: "private",
+                }),
+                { status },
+              ),
+          ),
+        );
+        const app = await createPassthroughTestApp();
+        const response = await app.request("/v1/passthrough/example/items", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: "{}",
+        });
+        expect(response.status).toBe(status);
+        await expect(response.json()).resolves.toEqual({ code: status, message: "Invalid native input" });
+      },
+    );
+
+    it.each(["text/html", "image/svg+xml"])(
+      "sandboxes upstream %s on the shared gateway origin",
+      async (contentType) => {
+        vi.stubGlobal(
+          "fetch",
+          vi.fn<typeof fetch>(
+            async () =>
+              new Response("<script>unsafe()</script>", {
+                headers: {
+                  "content-type": contentType,
+                  "content-security-policy": "sandbox allow-scripts allow-same-origin",
+                  "x-content-type-options": "unsafe-upstream-value",
+                },
+              }),
+          ),
+        );
+        const app = await createPassthroughTestApp();
+        const response = await app.request("/v1/passthrough/example/content");
+        expect(response.status).toBe(200);
+        expect(await response.text()).toBe("<script>unsafe()</script>");
+        expect(response.headers.get("content-security-policy")).toBe("sandbox");
+        expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+      },
+    );
+
+    it("uses a native code/message fallback for unknown upstream error formats", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn<typeof fetch>(async () => new Response("plain upstream failure", { status: 502 })),
+      );
+      const app = await createPassthroughTestApp();
+      const response = await app.request("/v1/passthrough/example/items");
+      expect(response.status).toBe(502);
+      await expect(response.json()).resolves.toEqual({ code: 502, message: "plain upstream failure" });
+    });
+
+    it("rejects unauthenticated native requests before upstream fetch", async () => {
+      const transport = vi.fn<typeof fetch>();
+      vi.stubGlobal("fetch", transport);
+      const app = await createPassthroughTestApp({
+        auth: { adminToken: "admin-token", runtimeToken: "gateway-token" },
+      });
+      const response = await app.request("/v1/passthrough/example/items");
+      expect(response.status).toBe(401);
+      await expect(response.json()).resolves.toEqual({ code: 401, message: "A valid local bearer token is required." });
+      expect(transport).not.toHaveBeenCalled();
+    });
+
+    it("enforces persistent token proxy and connection grants before fetch and supports selected connections", async () => {
+      const database = new SqliteRuntimeDatabase(":memory:");
+      requestDatabases.push(database);
+      const transport = vi.fn<typeof fetch>(
+        async () => new Response("{}", { headers: { "content-type": "application/json" } }),
+      );
+      vi.stubGlobal("fetch", transport);
+      const app = await createPassthroughTestApp({
+        auth: { adminToken: "admin-token" },
+        runtimeTokens: new RuntimeTokenService(database.runtimeTokenStore),
+      });
+      const workResponse = await app.request("/api/connections/example", {
+        method: "PUT",
+        headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
+        body: JSON.stringify({ authType: "api_key", connectionName: "work", values: { apiKey: "work-key" } }),
+      });
+      const work = (await workResponse.json()) as { id: string };
+      for (const [allowedProxies, alias, expectedStatus] of [
+        [[], "work", 403],
+        [["example"], "default", 403],
+        [["example"], "work", 200],
+      ] as const) {
+        const creation = await app.request("/api/runtime-tokens", {
+          method: "POST",
+          headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
+          body: JSON.stringify({
+            name: "Native proxy",
+            allowedActions: [],
+            blockedActions: [],
+            allowedProxies,
+            allowedConnections: [work.id],
+          }),
+        });
+        expect(creation.status).toBe(200);
+        const token = (await creation.json()) as { token: string };
+        const response = await app.request("/v1/passthrough/example/items", {
+          headers: { authorization: `Bearer ${token.token}`, "x-oo-connector-alias": alias },
+        });
+        expect(response.status).toBe(expectedStatus);
+        if (expectedStatus === 403) {
+          await expect(response.json()).resolves.toMatchObject({ code: 403 });
+          expect(transport).not.toHaveBeenCalled();
+        }
+      }
+      expect(transport).toHaveBeenCalledTimes(1);
+      expect(new Headers(transport.mock.calls[0]?.[1]?.headers).get("authorization")).toBe("Bearer work-key");
+      const allTokens = await database.runtimeTokenStore.list();
+      expect(allTokens).toHaveLength(3);
+    });
+
+    it("supports app-id connection selection without forwarding internal selection headers", async () => {
+      const transport = vi.fn<typeof fetch>(
+        async () => new Response("ok", { headers: { "content-type": "text/plain" } }),
+      );
+      vi.stubGlobal("fetch", transport);
+      const app = await createPassthroughTestApp();
+      const selected = await app.request("/api/connections/example", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ authType: "api_key", connectionName: "selected", values: { apiKey: "selected-key" } }),
+      });
+      const connection = (await selected.json()) as { id: string };
+      const response = await app.request("/v1/passthrough/example/items?connectionName=upstream", {
+        headers: { "x-oo-connector-app-id": connection.id },
+      });
+      expect(response.status).toBe(200);
+      const headers = new Headers(transport.mock.calls[0]?.[1]?.headers);
+      expect(headers.get("authorization")).toBe("Bearer selected-key");
+      expect(headers.has("x-oo-connector-app-id")).toBe(false);
+      expect(String(transport.mock.calls[0]?.[0])).toContain("?connectionName=upstream");
+    });
+
+    it("enforces persistent runtime proxy policy before fetch", async () => {
+      const database = new SqliteRuntimeDatabase(":memory:");
+      requestDatabases.push(database);
+      const transport = vi.fn<typeof fetch>();
+      vi.stubGlobal("fetch", transport);
+      const app = await createPassthroughTestApp({ runtimePolicyStore: database.runtimePolicyStore });
+      const updated = await app.request("/api/runtime-policy", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          allowedActions: [],
+          blockedActions: [],
+          allowedProxies: [],
+          blockedProxies: ["example"],
+        }),
+      });
+      expect(updated.status).toBe(200);
+      const response = await app.request("/v1/passthrough/example/items");
+      expect(response.status).toBe(403);
+      await expect(response.json()).resolves.toMatchObject({ code: 403 });
+      expect(transport).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      "//evil.example/items",
+      "/https://evil.example/items",
+      "/items/%2e%2e%2fsecret",
+      "/items/%252e%252e/secret",
+      "/items/%invalid",
+    ])("rejects unsafe native target %s before fetch", async (path) => {
+      const transport = vi.fn<typeof fetch>();
+      vi.stubGlobal("fetch", transport);
+      const app = await createPassthroughTestApp();
+      const response = await app.request(`/v1/passthrough/example${path}`);
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({ code: 400 });
+      expect(transport).not.toHaveBeenCalled();
+    });
+
+    it.each<UnsupportedPassthroughRequest>([
+      { headers: { "content-type": "application/octet-stream" }, body: new Uint8Array([0, 255]), status: 415 },
+      { headers: { "content-type": "multipart/form-data; boundary=x" }, body: "--x", status: 415 },
+      { headers: { "content-type": "application/json", "content-encoding": "gzip" }, body: "{}", status: 415 },
+      { headers: { "content-type": "text/plain; charset=iso-8859-1" }, body: "text", status: 415 },
+      { headers: { "content-type": "text/plain" }, body: new Uint8Array([255]), status: 415 },
+      { headers: { "content-type": "text/event-stream" }, body: "data: event", status: 415 },
+      { headers: { "content-type": "application/json", accept: "text/event-stream" }, body: "{}", status: 501 },
+      {
+        headers: { "content-type": "application/json", upgrade: "websocket", connection: "Upgrade" },
+        body: "{}",
+        status: 501,
+      },
+    ])("rejects unsupported native input $headers before fetch", async ({ headers, body, status }) => {
+      const transport = vi.fn<typeof fetch>();
+      vi.stubGlobal("fetch", transport);
+      const app = await createPassthroughTestApp();
+      const response = await app.request("/v1/passthrough/example/items", { method: "POST", headers, body });
+      expect(response.status).toBe(status);
+      await expect(response.json()).resolves.toMatchObject({ code: status });
+      expect(transport).not.toHaveBeenCalled();
+    });
+
+    it("rejects unsupported native methods before fetch", async () => {
+      const transport = vi.fn<typeof fetch>();
+      vi.stubGlobal("fetch", transport);
+      const app = await createPassthroughTestApp();
+      const response = await app.request("/v1/passthrough/example/items", { method: "OPTIONS" });
+      expect(response.status).toBe(405);
+      await expect(response.json()).resolves.toMatchObject({ code: 405 });
+      expect(transport).not.toHaveBeenCalled();
+    });
+
+    it.each([true, false])("bounds native request bodies with declared length %s", async (declaredLength) => {
+      const transport = vi.fn<typeof fetch>();
+      vi.stubGlobal("fetch", transport);
+      const app = await createPassthroughTestApp();
+      const headers = new Headers({ "content-type": "text/plain" });
+      if (declaredLength) headers.set("content-length", String(1024 * 1024 + 1));
+      const response = await app.request("/v1/passthrough/example/items", {
+        method: "POST",
+        headers,
+        body: "x".repeat(1024 * 1024 + 1),
+      });
+      expect(response.status).toBe(413);
+      await expect(response.json()).resolves.toMatchObject({ code: 413 });
+      expect(transport).not.toHaveBeenCalled();
+    });
+
+    it("preserves UTF-8 characters split across native request stream chunks", async () => {
+      const transport = vi.fn<typeof fetch>(
+        async () => new Response("ok", { headers: { "content-type": "text/plain" } }),
+      );
+      vi.stubGlobal("fetch", transport);
+      const app = await createPassthroughTestApp();
+      const bytes = new TextEncoder().encode("日本語");
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          for (const byte of bytes) controller.enqueue(new Uint8Array([byte]));
+          controller.close();
+        },
+      });
+      const init: StreamingRequestInit = {
+        method: "POST",
+        headers: { "content-type": "text/plain" },
+        body,
+        duplex: "half",
+      };
+      const response = await app.fetch(new Request("http://localhost/v1/passthrough/example/items", init));
+      expect(response.status).toBe(200);
+      expect(transport.mock.calls[0]?.[1]?.body).toBe("日本語");
+    });
+
+    it("cancels an oversized native request stream before upstream fetch", async () => {
+      const transport = vi.fn<typeof fetch>();
+      const cancel = vi.fn();
+      vi.stubGlobal("fetch", transport);
+      const app = await createPassthroughTestApp();
+      const body = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          controller.enqueue(new Uint8Array(128 * 1024));
+        },
+        cancel,
+      });
+      const init: StreamingRequestInit = {
+        method: "POST",
+        headers: { "content-type": "text/plain" },
+        body,
+        duplex: "half",
+      };
+      const response = await app.fetch(new Request("http://localhost/v1/passthrough/example/items", init));
+      expect(response.status).toBe(413);
+      expect(cancel).toHaveBeenCalledTimes(1);
+      expect(transport).not.toHaveBeenCalled();
+    });
+
+    it("rejects buffered SSE responses instead of claiming streaming support", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn<typeof fetch>(
+          async () => new Response("data: event\n\n", { headers: { "content-type": "text/event-stream" } }),
+        ),
+      );
+      const app = await createPassthroughTestApp();
+      const response = await app.request("/v1/passthrough/example/items");
+      expect(response.status).toBe(501);
+      await expect(response.json()).resolves.toEqual({
+        code: 501,
+        message: "Streaming event responses are not supported.",
+      });
+    });
+  });
+
   it("executes provider proxy requests through the v1 runtime envelope", async () => {
     const app = createTestServer([apiKeyProvider], {
       providerLoader: new ProxyProviderLoader(),
@@ -3471,7 +4145,7 @@ describe("ConnectServer", () => {
           authType: "api_key",
         },
       },
-      meta: {},
+      meta: { service: "example", executionId: expect.any(String) },
     });
   });
 
@@ -3554,7 +4228,7 @@ describe("ConnectServer", () => {
       message: "example request timed out",
       data: { status: 504 },
       errorCode: "provider_error",
-      meta: { service: "example" },
+      meta: { service: "example", executionId: expect.any(String) },
     });
   });
 
@@ -3859,6 +4533,16 @@ describe("ConnectServer", () => {
   });
 });
 
+interface UnsupportedPassthroughRequest {
+  headers: Record<string, string>;
+  body: BodyInit;
+  status: number;
+}
+
+interface StreamingRequestInit extends RequestInit {
+  duplex: "half";
+}
+
 interface TestAuthOptions {
   adminToken?: string;
   runtimeToken?: string;
@@ -3961,6 +4645,45 @@ function createTestServer(providers: ProviderDefinition[], options: CreateTestSe
     actionSearch: options.actionSearch,
     logger: options.logger,
   });
+}
+
+async function createPassthroughTestApp(
+  options: CreateTestServerOptions = {},
+): Promise<ReturnType<ConnectServer["createApp"]>> {
+  const app = createTestServer([apiKeyProvider], {
+    ...options,
+    providerLoader: new ProxyProviderLoader(
+      defineProviderProxy({
+        service: "example",
+        baseUrl: "https://example.com/api/",
+        auth: { type: "bearer" },
+        skipDnsValidation: true,
+      }),
+    ),
+  }).createApp();
+  const headers = new Headers({ "content-type": "application/json" });
+  if (options.auth?.adminToken) headers.set("authorization", `Bearer ${options.auth.adminToken}`);
+  const configured = await app.request("/api/connections/example", {
+    method: "PUT",
+    headers,
+    body: JSON.stringify({ authType: "api_key", values: { apiKey: "example-key" } }),
+  });
+  expect(configured.status).toBe(200);
+  return app;
+}
+
+async function createMonidPassthroughTestApp(): Promise<ReturnType<ConnectServer["createApp"]>> {
+  const app = createTestServer([monidProvider], {
+    providerLoader: new ProviderLoader(executorModules),
+    auth: { adminToken: "admin-token", runtimeToken: "gateway-token" },
+  }).createApp();
+  const configured = await app.request("/api/connections/monid", {
+    method: "PUT",
+    headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
+    body: JSON.stringify({ authType: "api_key", values: { apiKey: "monid_saved_key" } }),
+  });
+  expect(configured.status).toBe(200);
+  return app;
 }
 
 type TestLogEntry = {
