@@ -28,17 +28,16 @@ test-database acceptance step, not a claim established by local test adapters.
 - Wrangler available through `npx wrangler`.
 - Node.js 22 or newer.
 
-## Create Local Config
+## Review Worker Config
 
-Install dependencies and copy the example Wrangler config:
+Install dependencies:
 
 ```bash
 npm install
-cp wrangler.example.jsonc wrangler.local.jsonc
 ```
 
-`wrangler.local.jsonc` is ignored by git. Fill it with your Cloudflare resource IDs before remote
-deployment.
+This fork uses the tracked `wrangler.jsonc` for local preview and remote deployment.
+Review its Cloudflare resource IDs before running either workflow, and keep secrets out of this file.
 
 ## Log In With Wrangler
 
@@ -69,11 +68,10 @@ larger than 25 MiB:
 npx wrangler kv namespace create open-connector-transit-files
 ```
 
-Put the returned D1 `database_id` and R2 bucket name or KV namespace `id` into
-`wrangler.local.jsonc`. For KV, comment out the `r2_buckets` block, uncomment the
-`kv_namespaces` block, and set `TRANSIT_FILES_BACKEND` to `"kv"` as shown in the example config.
-Only one backend may use the `TRANSIT_FILES` binding. All Wrangler commands that read the Worker
-config should use `--config wrangler.local.jsonc`.
+Put the returned D1 `database_id` and R2 bucket name or KV namespace `id` into `wrangler.jsonc`.
+For KV, comment out the `r2_buckets` block, uncomment the `kv_namespaces` block, and set `TRANSIT_FILES_BACKEND` to `"kv"` as shown in the example config.
+Only one backend may use the `TRANSIT_FILES` binding.
+All Wrangler commands that read the Worker config use the tracked `wrangler.jsonc` by default.
 
 ## Local Worker Preview
 
@@ -93,13 +91,12 @@ OOMOL_CONNECT_ENCRYPTION_KEY=replace-with-a-local-encryption-key
 Apply the migrations to Wrangler's local D1 state, then start the Worker:
 
 ```bash
-npx wrangler d1 migrations apply open-connector --local --config wrangler.local.jsonc
+npx wrangler d1 migrations apply open-connector --local
 npm run dev:cloudflare
 ```
 
-`npm run dev:cloudflare` generates the catalog, builds the Web Console, copies catalog assets, and
-runs `wrangler dev --config wrangler.local.jsonc`. The local Worker preview uses the same generated
-provider Action executor registry as the Node runtime.
+`npm run dev:cloudflare` generates the catalog, builds the Web Console, copies catalog assets, and runs `wrangler dev`.
+The local Worker preview uses the same generated provider Action executor registry as the Node runtime.
 
 Check the local Worker and open the Web Console at `http://localhost:8787`:
 
@@ -111,12 +108,19 @@ The health endpoint should return `{"ok":true}`.
 
 ## Remote Deployment
 
-Apply all pending migrations to the remote D1 database before the initial deployment and every
-upgrade. `npm run deploy:cloudflare` does not apply D1 migrations:
+`npm run deploy:cloudflare` applies all pending migrations to the remote D1 database before generating assets and deploying the Worker.
+If migration fails, the command stops without deploying the new Worker.
+To apply migrations independently, run:
 
 ```bash
-npx wrangler d1 migrations apply open-connector --remote --config wrangler.local.jsonc
+npm run migrate:cloudflare
 ```
+
+Both scripts use this fork's tracked `wrangler.jsonc` by default, so confirm its D1 database and Worker settings before running either command.
+The migration script targets the remote database, not the local preview state.
+It sets `CI=true` to automatically confirm pending migrations, so declining an interactive Wrangler prompt cannot accidentally allow deployment to continue without applying them.
+Review the pending migrations before running either script.
+Passing `--dry-run` to `deploy:cloudflare` only skips Worker upload; the remote migration step still runs.
 
 Generate two independent random values by running this command twice:
 
@@ -132,8 +136,8 @@ available to operators who need the Web Console or admin API.
 Paste the generated values when Wrangler prompts for each secret:
 
 ```bash
-npx wrangler secret put OOMOL_CONNECT_ADMIN_TOKEN --config wrangler.local.jsonc
-npx wrangler secret put OOMOL_CONNECT_ENCRYPTION_KEY --config wrangler.local.jsonc
+npx wrangler secret put OOMOL_CONNECT_ADMIN_TOKEN
+npx wrangler secret put OOMOL_CONNECT_ENCRYPTION_KEY
 ```
 
 Deploy:
@@ -142,13 +146,9 @@ Deploy:
 npm run deploy:cloudflare
 ```
 
-`npm run deploy:cloudflare` generates the catalog, builds the Web Console, copies catalog assets,
-and runs `wrangler deploy --config wrangler.local.jsonc --minify`. The copied
-`wrangler.local.jsonc` already maps the built Web Console assets to the `ASSETS` binding used by
-the Worker. `--minify` matters on Workers beyond the upload size limit: a heap snapshot of the
-running isolate (taken through the `wrangler dev` inspector) shows the script source retained as one
-string for as long as the isolate lives, so the 13.8 MiB minified script costs about half the
-isolate memory of the 28.7 MiB unminified one, out of the 128 MB each Worker isolate gets.
+`npm run deploy:cloudflare` first runs `npm run migrate:cloudflare`, then generates the catalog, builds the Web Console, copies catalog assets, and runs `wrangler deploy --minify`.
+The tracked `wrangler.jsonc` maps the built Web Console assets to the `ASSETS` binding used by the Worker.
+`--minify` matters on Workers beyond the upload size limit: a heap snapshot of the running isolate (taken through the `wrangler dev` inspector) shows the script source retained as one string for as long as the isolate lives, so the 13.8 MiB minified script costs about half the isolate memory of the 28.7 MiB unminified one, out of the 128 MB each Worker isolate gets.
 
 Use the Worker URL printed by Wrangler to check the deployed runtime, then open the same URL in a
 browser and enter the admin token to access the Web Console:
