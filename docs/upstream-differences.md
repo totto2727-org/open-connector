@@ -38,6 +38,15 @@ The virtual workspace maps this independent repository to `app/open-connector/` 
 - This is an existing fork-local policy, not a dependency requirement introduced by Monid.
 - npm `11.19.0` rejects ordinary package-script invocations with `EBADDEVENGINES`; use the configured package-manager version, or invoke the relevant Node entrypoint directly when testing already-generated sources.
 
+### Automatic D1 migrations before Cloudflare deployment
+
+- Changed files: `package.json` and `docs/cloudflare.md`.
+- `migrate:cloudflare` independently applies pending migrations to the remote `open-connector` D1 database using the fork's tracked `wrangler.jsonc`.
+- The migration command sets `CI=true` to accept Wrangler's migration confirmation automatically; declining its interactive prompt otherwise returns a successful exit code without applying migrations.
+- `deploy:cloudflare` runs `migrate:cloudflare` before catalog generation, Web Console build, asset copying, and Worker deployment.
+- The commands are chained with `&&`, so migration failure prevents the new Worker from being deployed against an outdated database schema.
+- This is a fork-local deployment safeguard, not a migration requirement introduced by adding a provider.
+
 ### History-only synchronization commits
 
 - [`c91a6300`](https://github.com/totto2727-org/open-connector/commit/c91a6300), `chore: merge upstream main through 28b7579c`, was already present locally before the fork was created.
