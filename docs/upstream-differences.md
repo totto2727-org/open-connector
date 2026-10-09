@@ -16,7 +16,7 @@ The Monid provider and the buffered native HTTP adapter are additional maintaine
 | `upstream` | `https://github.com/oomol-lab/open-connector.git`     | Fetch original history for comparison and synchronization                  |
 
 No pull request to the original repository is required for these fork-local changes.
-The virtual workspace maps this independent repository to `app/open-connector/` and ignores its contents at the workspace root.
+The virtual workspace maps this independent repository to `fork/app/open-connector/` and ignores its contents at the workspace root.
 
 ## Buffered native HTTP adapter and CLI compatibility
 
