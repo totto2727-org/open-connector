@@ -50,6 +50,14 @@ See [runtime API](runtime-api.md#buffered-native-http-passthrough) and [Monid in
 - This is an existing fork-local policy, not a dependency requirement introduced by Monid.
 - npm `11.19.0` rejects ordinary package-script invocations with `EBADDEVENGINES`; use the configured package-manager version, or invoke the relevant Node entrypoint directly when testing already-generated sources.
 
+### Compatible dependency ranges
+
+- Changed files: `package.json` and `package-lock.json`.
+- The fork uses `@types/bun: ^1.4.0` instead of an exact dependency requirement so compatible releases remain eligible.
+- The lockfile retains the concrete resolved version and integrity for reproducible installs.
+- The package manager version and version-specific lifecycle-script approvals are unchanged because they describe toolchain and execution trust boundaries, not dependency update constraints.
+- This dependency policy does not change provider runtime source or deployment behavior.
+
 ### Automatic D1 migrations before Cloudflare deployment
 
 - Changed files: `package.json` and `docs/cloudflare.md`.
