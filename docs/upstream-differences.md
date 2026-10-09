@@ -54,9 +54,12 @@ See [runtime API](runtime-api.md#buffered-native-http-passthrough) and [Monid in
 
 - Changed files: `package.json` and `package-lock.json`.
 - The fork uses `@types/bun: ^1.4.0` instead of an exact dependency requirement so compatible releases remain eligible.
-- The lockfile retains the concrete resolved version and integrity for reproducible installs.
+- The lockfile retains concrete resolved versions and integrity for reproducible installs and refreshes root and Web Console dependencies within their existing compatible ranges.
+- There are no dependency overrides, resolutions, or minimum-release-age exclusions in the tracked package-manager configuration.
+- npm 12.0.2 reports `min-release-age: null` and an empty `min-release-age-exclude` list by default, so the fork does not invent a waiting period or add an exception.
 - The package manager version and version-specific lifecycle-script approvals are unchanged because they describe toolchain and execution trust boundaries, not dependency update constraints.
-- This dependency policy does not change provider runtime source or deployment behavior.
+- Newly resolved packages whose scripts do not match the existing approvals remain blocked by npm rather than receiving broader execution trust.
+- This dependency policy does not change provider runtime source or deployment configuration.
 
 ### Automatic D1 migrations before Cloudflare deployment
 
