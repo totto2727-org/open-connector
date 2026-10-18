@@ -46,6 +46,7 @@ export interface ConnectAppOptions {
   computeRuntimeAuthConfigured?: boolean;
   compressApiResponses?: boolean;
   serveDocumentation?: boolean;
+  oauthCloseDelaySeconds?: number;
 }
 
 export interface ConnectApp {
@@ -172,6 +173,7 @@ export async function createConnectApp(options: ConnectAppOptions): Promise<Conn
       saasOAuth,
       compressApiResponses: options.compressApiResponses,
       serveDocumentation: options.serveDocumentation,
+      oauthCloseDelaySeconds: options.oauthCloseDelaySeconds,
     }).createApp(),
     runtimeAuthConfigured:
       Boolean(options.runtimeToken) ||

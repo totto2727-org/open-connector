@@ -21,6 +21,7 @@ export interface CloudflareEnv {
   OOMOL_CONNECT_TRANSIT_FILE_TTL_SECONDS?: string;
   OOMOL_CONNECT_TRANSIT_FILE_MAX_BYTES?: string;
   OOMOL_CONNECT_RUN_LIMIT?: string;
+  OOMOL_CONNECT_OAUTH_CLOSE_DELAY_SECONDS?: string;
 }
 
 export function resolvePublicOrigin(request: Request, env: CloudflareEnv): string {
@@ -30,4 +31,15 @@ export function resolvePublicOrigin(request: Request, env: CloudflareEnv): strin
 export function readPositiveInteger(value: string | undefined, fallback: number): number {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+/** Reads a non-negative integer setting. Empty, negative, and non-integer values fall back, since `Number("")` is 0. */
+export function readNonNegativeInteger(value: string | undefined, fallback: number): number {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return fallback;
+  }
+
+  const parsed = Number(trimmed);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
 }

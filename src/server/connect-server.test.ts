@@ -813,6 +813,13 @@ describe("ConnectServer", () => {
       headers: { authorization: "Bearer local-token" },
     });
     expect(runtimeUnauthorized.status).toBe(401);
+    await expect(runtimeUnauthorized.json()).resolves.toEqual({
+      success: false,
+      message: "A valid local bearer token is required.",
+      data: null,
+      errorCode: "unauthorized",
+      meta: {},
+    });
 
     const runtimeAuthorized = await app.request("/v1/actions", {
       headers: { authorization: "Bearer runtime-token" },
@@ -1540,59 +1547,63 @@ describe("ConnectServer", () => {
     });
   });
 
-  it("lists OAuth connections after the callback completes", async () => {
-    const app = createTestServer([oauthProvider]).createApp();
-    const config = await app.request("/api/oauth/configs/oauth_example", {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        clientId: "client-id",
-        clientSecret: "client-secret",
-        secretExtra: {
-          appBearerToken: "app-token",
+  it.each([undefined, 0, 3])(
+    "lists OAuth connections after the callback completes with close delay %s",
+    async (oauthCloseDelaySeconds) => {
+      const app = createTestServer([oauthProvider], { oauthCloseDelaySeconds }).createApp();
+      const config = await app.request("/api/oauth/configs/oauth_example", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          clientId: "client-id",
+          clientSecret: "client-secret",
+          secretExtra: {
+            appBearerToken: "app-token",
+          },
+        }),
+      });
+      expect(config.status).toBe(200);
+      const authorization = await app.request("/api/oauth/authorizations", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ service: "oauth_example" }),
+      });
+      expect(authorization.status).toBe(200);
+      const { state } = (await authorization.json()) as { state: string };
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => Response.json({ access_token: "access-token", token_type: "Bearer" })),
+      );
+
+      const callback = await app.request(`/oauth/callback?state=${state}&code=example-code`);
+      const callbackText = await callback.text();
+
+      expect(callback.status, callbackText).toBe(200);
+      expect(callbackText).toContain("BroadcastChannel");
+      expect(callbackText).toContain('"type":"oauth.completed"');
+      expect(callbackText).toContain('"service":"oauth_example"');
+      expect(callbackText).not.toContain("window.opener");
+      expect(callbackText).not.toContain('postMessage(message,"*"');
+      expect(callbackText).toContain("Connection complete");
+      expect(callbackText).toContain("Close this window to continue where you started.");
+      expect(callbackText).not.toContain("OOMOL Connect");
+      expect(callbackText).toContain("card");
+      expect(callbackText).toContain("badge");
+      expect(callbackText).toContain(`Automatically closing in ${oauthCloseDelaySeconds ?? 5} seconds.`);
+      expect(callbackText).toContain(`let remaining=${oauthCloseDelaySeconds ?? 5};`);
+      expect(callbackText).toContain("setTimeout");
+      expect(callbackText).toContain("window.close()");
+      const connections = await app.request("/api/connections");
+      expect(connections.status).toBe(200);
+      await expect(connections.json()).resolves.toMatchObject([
+        {
+          service: "oauth_example",
+          authType: "oauth2",
+          configured: true,
         },
-      }),
-    });
-    expect(config.status).toBe(200);
-    const authorization = await app.request("/api/oauth/authorizations", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ service: "oauth_example" }),
-    });
-    expect(authorization.status).toBe(200);
-    const { state } = (await authorization.json()) as { state: string };
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => Response.json({ access_token: "access-token", token_type: "Bearer" })),
-    );
-
-    const callback = await app.request(`/oauth/callback?state=${state}&code=example-code`);
-    const callbackText = await callback.text();
-
-    expect(callback.status, callbackText).toBe(200);
-    expect(callbackText).toContain("BroadcastChannel");
-    expect(callbackText).toContain('"type":"oauth.completed"');
-    expect(callbackText).toContain('"service":"oauth_example"');
-    expect(callbackText).not.toContain("window.opener");
-    expect(callbackText).not.toContain('postMessage(message,"*"');
-    expect(callbackText).toContain("Connection complete");
-    expect(callbackText).toContain("Close this window to continue where you started.");
-    expect(callbackText).not.toContain("OOMOL Connect");
-    expect(callbackText).toContain("card");
-    expect(callbackText).toContain("badge");
-    expect(callbackText).toContain("Automatically closing in 5 seconds.");
-    expect(callbackText).toContain("setTimeout");
-    expect(callbackText).toContain("window.close()");
-    const connections = await app.request("/api/connections");
-    expect(connections.status).toBe(200);
-    await expect(connections.json()).resolves.toMatchObject([
-      {
-        service: "oauth_example",
-        authType: "oauth2",
-        configured: true,
-      },
-    ]);
-  });
+      ]);
+    },
+  );
 
   it("keeps the console shell public while protecting admin APIs", async () => {
     const staticRoot = await createTestStaticRoot();
@@ -2779,7 +2790,8 @@ describe("ConnectServer", () => {
 
     const providers = await app.request("/v1/providers");
     expect(providers.status).toBe(200);
-    expect(providers.headers.get("cache-control")).toBe("public, max-age=0, must-revalidate");
+    expect(providers.headers.get("cache-control")).toBe("no-store");
+    expect(providers.headers.get("cloudflare-cdn-cache-control")).toBeNull();
     await expect(providers.json()).resolves.toMatchObject({
       success: true,
       data: [
@@ -2794,7 +2806,8 @@ describe("ConnectServer", () => {
 
     const actionServices = await app.request("/v1/actions");
     expect(actionServices.status).toBe(200);
-    expect(actionServices.headers.get("cache-control")).toBe("public, max-age=0, must-revalidate");
+    expect(actionServices.headers.get("cache-control")).toBe("no-store");
+    expect(actionServices.headers.get("cloudflare-cdn-cache-control")).toBeNull();
     await expect(actionServices.json()).resolves.toMatchObject({
       success: true,
       data: [{ service: "example" }],
@@ -2802,7 +2815,8 @@ describe("ConnectServer", () => {
 
     const actions = await app.request("/v1/actions?service=example");
     expect(actions.status).toBe(200);
-    expect(actions.headers.get("cache-control")).toBe("public, max-age=0, must-revalidate");
+    expect(actions.headers.get("cache-control")).toBe("no-store");
+    expect(actions.headers.get("cloudflare-cdn-cache-control")).toBeNull();
     await expect(actions.json()).resolves.toMatchObject({
       success: true,
       data: [
@@ -2870,7 +2884,8 @@ describe("ConnectServer", () => {
 
     const action = await app.request("/v1/actions/example.echo");
     expect(action.status).toBe(200);
-    expect(action.headers.get("cache-control")).toBe("public, max-age=0, must-revalidate");
+    expect(action.headers.get("cache-control")).toBe("no-store");
+    expect(action.headers.get("cloudflare-cdn-cache-control")).toBeNull();
     await expect(action.json()).resolves.toMatchObject({
       success: true,
       meta: {},
@@ -3297,7 +3312,15 @@ describe("ConnectServer", () => {
       body: JSON.stringify({ input: { message: "hello" } }),
     };
 
-    expect((await app.request("/v1/actions/example.echo", request)).status).toBe(500);
+    const failed = await app.request("/v1/actions/example.echo", request);
+    expect(failed.status).toBe(500);
+    await expect(failed.json()).resolves.toEqual({
+      success: false,
+      message: "Internal server error.",
+      data: null,
+      errorCode: "internal_error",
+      meta: {},
+    });
     const duplicate = await app.request("/v1/actions/example.echo", request);
     expect(duplicate.status).toBe(409);
     await expect(duplicate.json()).resolves.toMatchObject({
@@ -4409,15 +4432,13 @@ describe("ConnectServer", () => {
   });
 
   it("uses the injected Node transit upload handler", async () => {
-    const uploadTransitFile = vi.fn(
-      async (): Promise<TransitFileUpload> => ({
-        fileId: `${"a".repeat(32)}.txt`,
-        downloadUrl: `http://localhost:3000/api/files/${"a".repeat(32)}.txt`,
-        sizeBytes: 6,
-        name: "streamed.txt",
-        mimeType: "text/plain",
-      }),
-    );
+    const uploadTransitFile = vi.fn(async (): Promise<TransitFileUpload> => ({
+      fileId: `${"a".repeat(32)}.txt`,
+      downloadUrl: `http://localhost:3000/api/files/${"a".repeat(32)}.txt`,
+      sizeBytes: 6,
+      name: "streamed.txt",
+      mimeType: "text/plain",
+    }));
     const app = createTestServer([apiKeyProvider], { uploadTransitFile }).createApp();
 
     const response = await app.request("/api/files", { method: "POST", body: "stream" });
@@ -4602,6 +4623,7 @@ interface CreateTestServerOptions {
   uploadTransitFile?: (request: Request) => Promise<TransitFileUpload>;
   secretCodec?: ISecretCodec;
   allowedCustomOAuth?: string[];
+  oauthCloseDelaySeconds?: number;
 }
 
 function createTestServer(providers: ProviderDefinition[], options: CreateTestServerOptions = {}): ConnectServer {
@@ -4680,6 +4702,7 @@ function createTestServer(providers: ProviderDefinition[], options: CreateTestSe
     actionPolicy: options.actionPolicy,
     actionSearch: options.actionSearch,
     logger: options.logger,
+    oauthCloseDelaySeconds: options.oauthCloseDelaySeconds,
   });
 }
 
@@ -4915,6 +4938,28 @@ class MemoryConnectionStore implements IConnectionStore {
     return this.store.get(createConnectionKey(service, connectionName));
   }
 
+  private readonly retirementGenerations = new Map<string, string>();
+
+  async getRetirementGeneration(service: string, connectionName: string): Promise<string> {
+    const key = JSON.stringify([service, connectionName]);
+    let generation = this.retirementGenerations.get(key);
+    if (!generation) {
+      generation = crypto.randomUUID();
+      this.retirementGenerations.set(key, generation);
+    }
+    return generation;
+  }
+
+  async setIfCurrentGeneration(
+    service: string,
+    connectionName: string,
+    credential: ResolvedCredential,
+    retirementGeneration: string,
+  ) {
+    if ((await this.getRetirementGeneration(service, connectionName)) !== retirementGeneration) return undefined;
+    return this.set(service, connectionName, credential);
+  }
+
   async set(service: string, connectionName: string, credential: ResolvedCredential) {
     const key = createConnectionKey(service, connectionName);
     const connection = {
@@ -4937,6 +4982,7 @@ class MemoryConnectionStore implements IConnectionStore {
   }
 
   async delete(service: string, connectionName: string): Promise<void> {
+    this.retirementGenerations.set(JSON.stringify([service, connectionName]), crypto.randomUUID());
     this.store.delete(createConnectionKey(service, connectionName));
   }
 

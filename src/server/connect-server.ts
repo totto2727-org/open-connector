@@ -158,6 +158,8 @@ export interface IConnectServerOptions {
   logger?: RuntimeLogger;
   compressApiResponses?: boolean;
   serveDocumentation?: boolean;
+  /** Seconds the OAuth completion page waits before closing its window. `0` closes it as soon as it loads. */
+  oauthCloseDelaySeconds?: number;
   marketplace?: MarketplaceService;
   saasProject?: SaasProjectService;
   saas?: SaasExecutionService;
@@ -519,7 +521,7 @@ export class ConnectServer {
         },
         "request failed",
       );
-      if (context.req.path.startsWith("/v1/connections") || context.req.path.startsWith("/v1/connection-requests")) {
+      if (context.req.path.startsWith("/v1/")) {
         return writeRuntimeFailure(context, {
           status: 500,
           errorCode: "internal_error",
@@ -1479,10 +1481,12 @@ export class ConnectServer {
 
     let service: string;
     try {
+      const callbackUrl = new URL(context.req.url);
       const completed = await this.options.oauthFlow.completeAuthorization({
         state,
         code,
-        callbackParameters: Object.fromEntries(new URL(context.req.url).searchParams),
+        callbackParameters: Object.fromEntries(callbackUrl.searchParams),
+        callbackQuery: callbackUrl.search,
         signal: context.req.raw.signal,
       });
       service = completed.service;
@@ -1510,7 +1514,7 @@ export class ConnectServer {
       throw error;
     }
 
-    return context.html(renderOAuthCompletionPage(service));
+    return context.html(renderOAuthCompletionPage(service, this.options.oauthCloseDelaySeconds));
   }
 
   private async writeConnectionResult(
