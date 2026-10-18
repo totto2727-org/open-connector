@@ -261,12 +261,10 @@ describe("ProxyRunner", () => {
     const fetcher = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Unexpected provider fetch"));
     const randomUUID = vi.spyOn(crypto, "randomUUID");
     try {
-      const proxy: ProviderProxyExecutor = vi.fn(
-        async (): Promise<ProxyExecutionResult> => ({
-          ok: true,
-          response: { status: 200, headers: {}, data: null },
-        }),
-      );
+      const proxy: ProviderProxyExecutor = vi.fn(async (): Promise<ProxyExecutionResult> => ({
+        ok: true,
+        response: { status: 200, headers: {}, data: null },
+      }));
       const info = vi.fn();
       const runner = createRunner({
         logger: { info, warn: vi.fn() } as unknown as Logger,
