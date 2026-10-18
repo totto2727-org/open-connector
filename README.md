@@ -29,7 +29,7 @@ prebuilt Actions to agents and applications.
   <tr>
     <td width="33.33%" valign="top">Managed OAuth and hosted runtime, ready to use. No deployment or OAuth app setup.</td>
     <td width="33.33%" valign="top">Run locally or on your own infrastructure with Docker or Node.js. You manage storage and OAuth apps.</td>
-    <td width="33.33%" valign="top"><strong>Cloudflare</strong>, <strong>Fly.io</strong>, <strong>RepoCloud</strong>, <strong>nibrun</strong>, <strong>NEXUS AI</strong>, and more.</td>
+    <td width="33.33%" valign="top"><strong>Cloudflare</strong>, <strong>Fly.io</strong>, <strong>RepoCloud</strong>, <strong>nibrun</strong>, <strong>NEXUS AI</strong>, <strong>Pethost</strong>, and more.</td>
   </tr>
   <tr>
     <td width="33.33%" align="center">🚀 <a href="https://oomol.com/docs/connector-saas/"><strong>OOMOL Hosted</strong></a></td>
@@ -215,19 +215,11 @@ Run OpenConnector from a prebuilt image on GitHub Packages (GHCR): `ghcr.io/oomo
 
 See [docs/docker-ghcr.md](docs/docker-ghcr.md) for tags, pulling, and running.
 
-## Build a Desktop Agent with Wanta
+## A Ready-to-Use AI Bot with Leina
 
-OpenConnector and [Wanta](https://github.com/oomol-lab/wanta) are two open-source projects for AI
-Agents in the OOMOL ecosystem. OpenConnector connects Agents to external services such as Gmail,
-Slack, and Notion. Wanta provides a complete desktop Agent application powered by OpenCode and uses
-OpenConnector to work with connected SaaS services.
+If you want an AI bot you can use out of the box, try [Leina](https://leina.ai/). Leina connects to over 1,500 SaaS apps and lets you customize your own AI agent by choosing its app connections, skills, and knowledge base to fit your team’s workflows.
 
-- **Run locally:** Use your own OpenAI-compatible model without creating a Wanta account.
-- **Build your own:** Fork Wanta and customize its prompts, tools, interface, models, and branding.
-- **Use hosted services:** The optional [hosted experience](https://wanta.ai/) provides managed
-  models, OAuth connections, and team workspaces.
-
-Issues and pull requests are welcome.
+Use it in Slack, Microsoft Teams, Discord, or Telegram to find information, compile weekly reports, organize customer feedback, and prepare sales follow-ups through the apps you authorize.
 
 ## Documentation
 

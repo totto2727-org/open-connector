@@ -141,8 +141,13 @@ export type OAuth2AuthDefinition = {
    * the provider as well as here. Inert otherwise.
    */
   revocationUrl?: string;
-  /** OAuth scopes joined with spaces into the authorization URL `scope` parameter. */
+  /** Default OAuth scopes when no requestedScopes or authorization options are selected. */
   scopes: string[];
+  /**
+   * Additional scopes available for explicit selection through requestedScopes or authorization
+   * options. requestedScopes replaces the default list; default scopes are not added automatically.
+   */
+  optionalScopes?: string[];
   /** Selectable provider-native OAuth scopes for programmatic connections. */
   authorizationOptions?: OAuthAuthorizationOption[];
   /** Separator used when joining OAuth scopes. Defaults to a space. */
@@ -361,6 +366,8 @@ export interface TransitFileStore {
   /** Available only on backends that can store unknown-length streams without buffering the file. */
   createFromStream?(file: TransitFileStream): Promise<TransitFileUpload>;
   read(fileId: string): Promise<TransitFileRead>;
+  /** Stream a stored file for provider uploads without materializing its bytes. */
+  response?(fileId: string): Promise<Response>;
   delete(fileId: string): Promise<boolean>;
 }
 

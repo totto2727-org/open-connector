@@ -6,7 +6,8 @@ It is a fork-maintenance reference, not a work-progress log.
 
 ## Comparison baseline
 
-The recorded upstream baseline is [`0535653ace7338adb346ccf564458eb7a57bdefd`](https://github.com/oomol-lab/open-connector/commit/0535653ace7338adb346ccf564458eb7a57bdefd).
+The recorded upstream baseline is [`ac0cf61313f766ed8c660118a1d53137dd29ae8c`](https://github.com/oomol-lab/open-connector/commit/ac0cf61313f766ed8c660118a1d53137dd29ae8c).
+The fork incorporates upstream provider, runtime, security, migration, and dependency updates through this revision while preserving the retained differences below.
 The existing local history was retained and merged with that upstream baseline in [`88b8488b761727d2319bb460817694da97288da9`](https://github.com/totto2727-org/open-connector/commit/88b8488b761727d2319bb460817694da97288da9), then published to the fork's `main` branch.
 The Monid provider and the buffered native HTTP adapter are additional maintained fork features.
 
@@ -16,7 +17,7 @@ The Monid provider and the buffered native HTTP adapter are additional maintaine
 | `upstream` | `https://github.com/oomol-lab/open-connector.git`     | Fetch original history for comparison and synchronization                  |
 
 No pull request to the original repository is required for these fork-local changes.
-The virtual workspace maps this independent repository to `app/open-connector/` and ignores its contents at the workspace root.
+The virtual workspace maps this independent repository to `fork/app/open-connector/` and ignores its contents at the workspace root.
 
 ## Buffered native HTTP adapter and CLI compatibility
 
@@ -49,6 +50,14 @@ See [runtime API](runtime-api.md#buffered-native-http-passthrough) and [Monid in
 - `devEngines.packageManager` specifies `npm` version `12.0.2` with `onFail: "download"`.
 - This is an existing fork-local policy, not a dependency requirement introduced by Monid.
 - npm `11.19.0` rejects ordinary package-script invocations with `EBADDEVENGINES`; use the configured package-manager version, or invoke the relevant Node entrypoint directly when testing already-generated sources.
+
+### Compatible dependency ranges
+
+- Changed files: `package.json` and `package-lock.json`.
+- The fork uses `@types/bun: ^1.4.0` instead of an exact dependency requirement so compatible releases remain eligible.
+- The lockfile retains the concrete resolved version and integrity for reproducible installs.
+- The package manager version and version-specific lifecycle-script approvals are unchanged because they describe toolchain and execution trust boundaries, not dependency update constraints.
+- This dependency policy does not change provider runtime source or deployment behavior.
 
 ### Automatic D1 migrations before Cloudflare deployment
 

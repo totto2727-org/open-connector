@@ -17,8 +17,9 @@ import { ProviderLoader } from "../providers/provider-loader.ts";
 import { executorModules } from "../providers/registry.cloudflare.generated.ts";
 import { SaasCleanupService } from "../saas/saas-cleanup-service.ts";
 import { isConsoleShellPath } from "./api/console-paths.ts";
+import { DEFAULT_OAUTH_CLOSE_DELAY_SECONDS } from "./api/oauth-completion-page.ts";
 import { loadCatalogFromAssets } from "./cloudflare/catalog-assets.ts";
-import { readPositiveInteger, resolvePublicOrigin } from "./cloudflare/cloudflare-env.ts";
+import { readNonNegativeInteger, readPositiveInteger, resolvePublicOrigin } from "./cloudflare/cloudflare-env.ts";
 import { createConnectApp } from "./connect-app.ts";
 import { preloadOptionalServerModules } from "./connect-server.ts";
 import { KVTransitFileService } from "./files/kv-transit-files.ts";
@@ -130,6 +131,10 @@ async function createCloudflareApp(env: CloudflareEnv, publicOrigin: string): Pr
     // `encodeBody: "manual"`, so application-level compression stays off here.
     // https://developers.cloudflare.com/workers/runtime-apis/response/
     compressApiResponses: false,
+    oauthCloseDelaySeconds: readNonNegativeInteger(
+      env.OOMOL_CONNECT_OAUTH_CLOSE_DELAY_SECONDS,
+      DEFAULT_OAUTH_CLOSE_DELAY_SECONDS,
+    ),
   });
 }
 
@@ -182,6 +187,7 @@ function createCacheKey(env: CloudflareEnv, publicOrigin: string): string {
     transitFileTtlSeconds: env.OOMOL_CONNECT_TRANSIT_FILE_TTL_SECONDS ?? "",
     transitFileMaxBytes: env.OOMOL_CONNECT_TRANSIT_FILE_MAX_BYTES ?? "",
     runLimit: env.OOMOL_CONNECT_RUN_LIMIT ?? "",
+    oauthCloseDelaySeconds: env.OOMOL_CONNECT_OAUTH_CLOSE_DELAY_SECONDS ?? "",
   });
 }
 
