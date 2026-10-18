@@ -8,8 +8,8 @@ It is a fork-maintenance reference, not a work-progress log.
 
 The recorded upstream baseline is [`ac0cf61313f766ed8c660118a1d53137dd29ae8c`](https://github.com/oomol-lab/open-connector/commit/ac0cf61313f766ed8c660118a1d53137dd29ae8c).
 The fork incorporates upstream provider, runtime, security, migration, and dependency updates through this revision while preserving the retained differences below.
-The existing local history was retained and merged with that upstream baseline in [`88b8488b761727d2319bb460817694da97288da9`](https://github.com/totto2727-org/open-connector/commit/88b8488b761727d2319bb460817694da97288da9), then published to the fork's `main` branch.
-The Monid provider and the buffered native HTTP adapter are additional maintained fork features.
+The existing local history was first merged with upstream revision `0535653ace7338adb346ccf564458eb7a57bdefd` in [`88b8488b761727d2319bb460817694da97288da9`](https://github.com/totto2727-org/open-connector/commit/88b8488b761727d2319bb460817694da97288da9), then published to the fork's `main` branch.
+The Monid and Projektor providers and the buffered native HTTP adapter are additional maintained fork features.
 
 | Remote     | Repository                                            | Role                                                                       |
 | ---------- | ----------------------------------------------------- | -------------------------------------------------------------------------- |
@@ -74,6 +74,17 @@ See [runtime API](runtime-api.md#buffered-native-http-passthrough) and [Monid in
 - [`88b8488b761727d2319bb460817694da97288da9`](https://github.com/totto2727-org/open-connector/commit/88b8488b761727d2319bb460817694da97288da9) merges the recorded upstream baseline while preserving both existing customization commits.
 - These merge commits retain provenance and incorporate upstream changes; they are not additional fork features.
 - Immediately after this synchronization, the surviving file differences against the recorded upstream baseline were `package.json` and `wrangler.jsonc` only.
+
+## Projektor backend provider
+
+The fork adds `src/providers/projektor/definition.ts` and `executors.ts` because upstream has no provider for the user's Projektor backend.
+The connection stores a backend URL and an API token, validates them with `GET /auth/me`, and injects the saved token as Bearer authentication for `/api` requests and identity checks.
+The provider uses shared lazy loading, credential storage, proxy execution, and SSRF-guarded egress without changing Projektor or upstream shared runtime behavior.
+Private-network access remains deployment-gated, unsafe local targets remain blocked, and redirects are rejected.
+The provider has no Actions, OAuth flow, token-management routes, or streaming MCP support.
+Provider regressions and a headless runtime integration test cover connection validation, normal and native proxy calls, credential isolation, workspace headers, and unsafe targets.
+See [Projektor connection and proxy usage](projektor.md).
+Deployment of the synchronized runtime also requires upstream migration `0018_connection_retirement.sql`; the fork's deployment command applies pending migrations before deployment.
 
 ## Monid-only provider addition
 
