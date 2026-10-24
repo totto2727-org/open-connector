@@ -19,6 +19,16 @@ The Monid provider and the buffered native HTTP adapter are additional maintaine
 No pull request to the original repository is required for these fork-local changes.
 The virtual workspace maps this independent repository to `fork/app/open-connector/` and ignores its contents at the workspace root.
 
+## CI-only GitHub Actions
+
+The fork keeps `.github/workflows/ci.yml` active and unchanged.
+All eight other upstream workflow files have `.disable` appended to their filenames, with their contents unchanged: `build-binary.yml`, `pr-maintainer-edits.yml`, `publish-docker.yml`, `publish-github-release.yml`, `publish-helm.yml`, `publish-npm.yml`, `release.yml`, and `star-history.yml`.
+GitHub Actions only discovers workflow files ending in `.yml` or `.yaml`, so these renamed files do not run in the fork.
+This avoids upstream-specific publishing credentials, trusted-publishing identities, external runner requirements, and unwanted release or repository-maintenance automation while retaining the upstream definitions for comparison.
+CI continues to run lint, formatting, typechecking, and tests on pull requests and pushes to `main`; binary builds, package/image/chart publishing, releases, PR-maintainer comments, and star-history commits are disabled.
+Manual Cloudflare deployment commands are unchanged.
+When synchronizing upstream, preserve this filename policy and disable any newly added non-CI workflows instead of adapting them to the fork.
+
 ## Buffered native HTTP adapter and CLI compatibility
 
 The fork adds `/v1/passthrough/:service/*` alongside the existing envelope-based `/v1/proxy/:service` route.
