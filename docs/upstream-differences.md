@@ -52,21 +52,19 @@ See [runtime API](runtime-api.md#buffered-native-http-passthrough) and [Monid in
 - The configured D1 and storage identifiers are deployment-specific, not API credentials; secrets must continue to use the runtime's secret-management mechanism and must not be added to this file.
 - Retain this file when synchronizing upstream, and review new upstream binding or migration requirements before deploying.
 
-### Cloudflare script selection and package-manager policy
+### Cloudflare script selection
 
 - Source commit: [`0072c4301225a21a7308c5d22f77260a4db3886a`](https://github.com/totto2727-org/open-connector/commit/0072c4301225a21a7308c5d22f77260a4db3886a), `wip`.
 - Changed file: `package.json`.
 - `dev:cloudflare` and `deploy:cloudflare` omit upstream's `--config wrangler.local.jsonc` flag, so Wrangler selects the fork's tracked `wrangler.jsonc` by default.
-- `devEngines.packageManager` specifies `npm` version `12.0.2` with `onFail: "download"`.
-- This is an existing fork-local policy, not a dependency requirement introduced by Monid.
-- npm `11.19.0` rejects ordinary package-script invocations with `EBADDEVENGINES`; use the configured package-manager version, or invoke the relevant Node entrypoint directly when testing already-generated sources.
+- Package-manager selection follows upstream without a fork-only `devEngines.packageManager` version requirement.
 
 ### Compatible dependency ranges
 
 - Changed files: `package.json` and `package-lock.json`.
 - The fork uses `@types/bun: ^1.4.0` instead of an exact dependency requirement so compatible releases remain eligible.
 - The lockfile retains the concrete resolved version and integrity for reproducible installs.
-- The package manager version and version-specific lifecycle-script approvals are unchanged because they describe toolchain and execution trust boundaries, not dependency update constraints.
+- Version-specific lifecycle-script approvals remain unchanged because they describe execution trust boundaries, not dependency update constraints.
 - This dependency policy does not change provider runtime source or deployment behavior.
 
 ### Automatic D1 migrations before Cloudflare deployment
