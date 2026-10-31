@@ -21,6 +21,61 @@ afterEach(async () => {
 });
 
 describe("headless runtime", () => {
+  it("connects a Projektor backend and proxies its API without exposing the saved token", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json({ user: { id: "user-1", name: "Alice" } }))
+      .mockResolvedValueOnce(Response.json({ workspaces: [{ slug: "example" }] }))
+      .mockResolvedValueOnce(Response.json({ issues: [] }));
+    vi.stubGlobal("fetch", fetcher);
+    runtime = await createConnectorRuntime(await fixture(["projektor"]));
+    const connected = await request("/v1/connections/projektor/connect/api-key", {
+      apiKey: "projektor-secret-token",
+      extra: { baseUrl: "https://projektor.example.com/api/" },
+    });
+    expect(connected.status).toBe(200);
+    const connection = await connected.json();
+    expect(connection).toMatchObject({ success: true });
+    expect(JSON.stringify(connection)).not.toContain("projektor-secret-token");
+    const connectionId = connection.data.id;
+    const proxied = await runtime.fetch(
+      new Request(`${publicOrigin}/v1/proxy/projektor`, {
+        method: "POST",
+        headers: {
+          authorization: "Bearer runtime-token",
+          "content-type": "application/json",
+          "x-oo-connector-app-id": connectionId,
+        },
+        body: JSON.stringify({ endpoint: "/api/workspaces", method: "GET" }),
+      }),
+    );
+    expect(proxied.status, await proxied.clone().text()).toBe(200);
+    expect(await proxied.json()).toMatchObject({
+      success: true,
+      data: { status: 200, data: { workspaces: [{ slug: "example" }] } },
+      meta: { service: "projektor", executionId: expect.any(String) },
+    });
+    const native = await runtime.fetch(
+      new Request(`${publicOrigin}/v1/passthrough/projektor/api/issues?limit=1`, {
+        headers: {
+          authorization: "Bearer runtime-token",
+          "x-workspace-slug": "example",
+          "x-oo-connector-app-id": connectionId,
+        },
+      }),
+    );
+    expect(native.status).toBe(200);
+    expect(await native.json()).toEqual({ issues: [] });
+    expect(fetcher.mock.calls.map(([url]) => String(url))).toEqual([
+      "https://projektor.example.com/auth/me",
+      "https://projektor.example.com/api/workspaces",
+      "https://projektor.example.com/api/issues?limit=1",
+    ]);
+    for (const [, init] of fetcher.mock.calls) {
+      expect(new Headers(init?.headers).get("authorization")).toBe("Bearer projektor-secret-token");
+    }
+    expect(new Headers(fetcher.mock.calls[2]?.[1]?.headers).get("x-workspace-slug")).toBe("example");
+  });
   it.each([45, undefined])(
     "preserves console and runtime denial formats with retry delay %s",
     async (retryAfterSeconds) => {
