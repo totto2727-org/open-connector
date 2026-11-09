@@ -110,6 +110,13 @@ OpenCode Go is intentionally excluded from this fork change.
 The earlier local experiment under the virtual workspace's `tmp/` is not part of this independent repository or its committed differences.
 See [Monid provider](monid.md) for the exact API coverage and the distinction between the API-key HTTP API and other Monid surfaces.
 
+## Local scratch artifact exclusion
+
+Relative to recorded upstream baseline `ac0cf61313f766ed8c660118a1d53137dd29ae8c`, the root `.gitignore` additionally excludes `/tmp/`.
+This operational fix keeps local scratch evidence from appearing as untracked repository changes and blocking workspace synchronization.
+Only the repository-root scratch directory is affected, with existing generated-file rules, secret exclusions, and environment-example exceptions unchanged.
+This retained configuration change does not modify runtime source, provider behavior, deployment commands, or automation.
+
 ## Reproduce and maintain the comparison
 
 Run these commands inside the independent `open-connector` repository:
