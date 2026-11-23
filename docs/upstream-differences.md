@@ -70,11 +70,12 @@ See [runtime API](runtime-api.md#buffered-native-http-passthrough) and [Monid in
 
 ### Compatible dependency ranges
 
-- Changed files: `package.json` and `package-lock.json`.
+- Changed files: `.bun-version`, `package.json`, `web/package.json`, and `package-lock.json`.
+- The fork refreshes the upstream dependency baseline for the runtime, Web Console, development tooling, and manual Bun builds while retaining npm, the existing build commands, and release channels.
 - The fork uses `@types/bun: ^1.4.0` instead of an exact dependency requirement so compatible releases remain eligible.
 - The lockfile retains the concrete resolved version and integrity for reproducible installs.
-- Version-specific lifecycle-script approvals remain unchanged because they describe execution trust boundaries, not dependency update constraints.
-- This dependency policy does not change provider runtime source or deployment behavior.
+- Lifecycle-script approvals remain exact; only the version of the already approved Wrangler dependency `workerd` advances with the lockfile.
+- These updates do not change runtime or test source, deployment configuration, or which workflows run in the fork.
 
 ### Automatic D1 migrations before Cloudflare deployment
 
