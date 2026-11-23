@@ -29,6 +29,15 @@ CI continues to run lint, formatting, typechecking, and tests on pull requests a
 Manual Cloudflare deployment commands are unchanged.
 When synchronizing upstream, preserve this filename policy and disable any newly added non-CI workflows instead of adapting them to the fork.
 
+## Shared Oxlint rules
+
+The fork adds the `@totto2727/oxlint` development dependency and enables four shared rules in `.oxlintrc.json`: `no-eslint-disable-comments`, `no-import-from-barrel-package`, `no-jsx-script-tag`, and `require-disable-reason`.
+The upstream baseline at `ac0cf61313f766ed8c660118a1d53137dd29ae8c` uses native Oxlint without the shared plugin.
+The fork keeps upstream's native rules, npm scripts, and exclusions; the shared rules apply to all tracked JavaScript and TypeScript, including Vitest suites.
+The generated JSON catalog remains outside lint scope.
+The fork does not use the full preset because it would require widespread upstream source and test changes, including changes to relative imports and Vitest conventions.
+The plugin runs during development and CI only; it does not change runtime source, test source, or deployment behavior.
+
 ## Buffered native HTTP adapter and CLI compatibility
 
 The fork adds `/v1/passthrough/:service/*` alongside the existing envelope-based `/v1/proxy/:service` route.

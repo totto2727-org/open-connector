@@ -18,6 +18,8 @@ npm run fix-check
 npm test
 ```
 
+See [fork differences](docs/upstream-differences.md#shared-oxlint-rules) for the shared rules used by this fork.
+
 ## Adding Providers
 
 Provider definitions should be source-of-truth files under `src/providers/<service>/definition.ts`.

@@ -64,6 +64,7 @@
     "@electric-sql/pglite": "^0.5.9",
     "@electric-sql/pglite-socket": "^0.2.12",
     "@hyrious/configs": "^0.1.6",
+    "@totto2727/oxlint": "^0.2.0",
     "@types/ali-oss": "^6.23.3",
     "@types/bun": "^1.4.0",
     "@types/busboy": "^1.5.5",
