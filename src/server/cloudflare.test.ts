@@ -8,6 +8,7 @@ import type {
 } from "./cloudflare/cloudflare-bindings.ts";
 import type { CloudflareEnv } from "./cloudflare/cloudflare-env.ts";
 
+import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import worker from "./cloudflare.ts";
 import { createWorkerSecretCodec } from "./secrets/worker-secret-codec.ts";
@@ -26,6 +27,87 @@ const provider = {
 describe("cloudflare worker", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("allows Access administrators only on the console origin and preserves runtime bearer authentication", async () => {
+    const consoleOrigin = "https://console.example.com";
+    const apiOrigin = "https://connector.example.workers.dev";
+    const team = "worker-test.cloudflareaccess.com";
+    const audience = "test-audience";
+    const issuer = `https://${team}`;
+    const { privateKey, publicKey } = await generateKeyPair("RS256");
+    const key = { ...(await exportJWK(publicKey)), kid: "access-signing-key" };
+    const fetchJwks = vi.fn(async () => Response.json({ keys: [key] }));
+    vi.stubGlobal("fetch", fetchJwks);
+    const sign = (aud = audience, iss = issuer, expires = "5m", email = "admin@example.com") =>
+      new SignJWT({ email })
+        .setProtectedHeader({ alg: "RS256", kid: key.kid })
+        .setIssuer(iss)
+        .setAudience(aud)
+        .setSubject("access-user")
+        .setExpirationTime(expires)
+        .sign(privateKey);
+    const env = {
+      ...createEnv(),
+      ASSETS: memoryAssets({ ...chunkedCatalog(), "/": "console", "/assets/index.js": "console JS" }),
+      OPEN_CONNECTOR_ACCESS_CONSOLE_ORIGIN: consoleOrigin,
+      OPEN_CONNECTOR_ACCESS_TEAM_DOMAIN: team,
+      OPEN_CONNECTOR_ACCESS_AUDIENCE: audience,
+      OOMOL_CONNECT_ADMIN_TOKEN: "old-password",
+      OOMOL_CONNECT_RUNTIME_TOKEN: "runtime-token",
+    };
+    const request = (origin: string, path: string, init?: RequestInit) =>
+      worker.fetch(new Request(`${origin}${path}`, init), env, createExecutionContext());
+    const authenticated = { "Cf-Access-Jwt-Assertion": await sign() };
+
+    await expect(request(consoleOrigin, "/")).resolves.toMatchObject({ status: 401 });
+    await expect(request(consoleOrigin, "/assets/index.js")).resolves.toMatchObject({ status: 401 });
+    await expect(request(consoleOrigin, "/", { headers: authenticated })).resolves.toMatchObject({ status: 200 });
+    await expect(request(apiOrigin, "/", { headers: authenticated })).resolves.toMatchObject({ status: 401 });
+    await expect(request(apiOrigin, "/health")).resolves.toMatchObject({ status: 200 });
+    const session = await request(consoleOrigin, "/api/auth/session", { headers: authenticated });
+    await expect(session.json()).resolves.toEqual({ adminAuthConfigured: false, authenticated: true });
+    expect(session.headers.get("set-cookie")).toBeNull();
+
+    for (const token of [
+      "forged",
+      await sign("other-audience"),
+      await sign(audience, "https://other.example"),
+      await sign(audience, issuer, "-5m"),
+      await sign(audience, issuer, "5m", ""),
+    ]) {
+      await expect(
+        request(consoleOrigin, "/openapi.json", {
+          headers: { "Cf-Access-Jwt-Assertion": token, authorization: "Bearer old-password" },
+        }),
+      ).resolves.toMatchObject({ status: 401 });
+    }
+    await expect(
+      request(apiOrigin, "/openapi.json", { headers: { authorization: "Bearer runtime-token" } }),
+    ).resolves.toMatchObject({ status: 401 });
+    await expect(request(apiOrigin, "/v1/health", { headers: authenticated })).resolves.toMatchObject({ status: 401 });
+    await expect(
+      request(apiOrigin, "/v1/health", { headers: { authorization: "Bearer runtime-token" } }),
+    ).resolves.toMatchObject({ status: 200 });
+    expect(fetchJwks).toHaveBeenCalledWith(`${issuer}/cdn-cgi/access/certs`, expect.anything());
+
+    const put = (origin: string) =>
+      request(consoleOrigin, "/api/connections/example", {
+        method: "PUT",
+        headers: { ...authenticated, "content-type": "application/json", origin },
+        body: JSON.stringify({ authType: "no_auth", connectionName: "work", values: {} }),
+      });
+    await expect(put("https://other.example")).resolves.toMatchObject({ status: 401 });
+    await expect(put(consoleOrigin)).resolves.toMatchObject({ status: 200 });
+
+    const { OPEN_CONNECTOR_ACCESS_AUDIENCE: _audience, ...incomplete } = env;
+    const missingAudience = await worker.fetch(
+      new Request(`${consoleOrigin}/openapi.json`, { headers: { authorization: "Bearer old-password" } }),
+      incomplete,
+      createExecutionContext(),
+    );
+    expect(missingAudience.status).toBe(401);
   });
 
   it("deduplicates concurrent app creation and retries after a transient catalog failure", async () => {
