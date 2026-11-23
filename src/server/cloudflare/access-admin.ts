@@ -1,4 +1,3 @@
-import { createRemoteJWKSet, jwtVerify } from "jose";
 import { PromiseCache } from "../../core/promise-cache.ts";
 
 interface AccessAdminSettings {
@@ -20,6 +19,7 @@ export function accessAdminVerifier(settings: AccessAdminSettings): Promise<Admi
   return verifiers.get(JSON.stringify([origin, team, audience]), async () => {
     if (!origin || !team || !audience || !/^[a-z0-9-]+\.cloudflareaccess\.com$/.test(team)) return async () => false;
 
+    const { createRemoteJWKSet, jwtVerify } = await import("jose");
     const issuer = `https://${team}`;
     const keys = createRemoteJWKSet(new URL("/cdn-cgi/access/certs", issuer));
     return async (request) => {
