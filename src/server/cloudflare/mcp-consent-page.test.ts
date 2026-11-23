@@ -19,7 +19,7 @@ it("escapes untrusted client metadata and the consent handle", () => {
   expect(html).not.toContain("<script>");
   expect(html).not.toContain('value="" autofocus');
   expect(html).toContain("&#60;img");
-  expect(html).toContain('type="password"');
+  expect(html).not.toContain('type="password"');
   expect(html).toContain("including write Actions");
   expect(html).toContain("<code>mcp:access</code>");
   expect(html).toContain("<code>offline_access</code>");

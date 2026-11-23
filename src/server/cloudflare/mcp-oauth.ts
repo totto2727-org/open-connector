@@ -12,6 +12,7 @@ import { timingSafeEqual } from "node:crypto";
 import { readBoundedResponseBytes } from "../../core/request.ts";
 import { D1RuntimeDatabase } from "../storage/d1/runtime-store.ts";
 import { RuntimeTokenService } from "../storage/runtime-token-service.ts";
+import { verifyAccessSubject } from "./access-admin.ts";
 import { renderMcpConsentPage } from "./mcp-consent-page.ts";
 
 interface McpOAuthProps {
@@ -68,6 +69,7 @@ export function createMcpOAuthHandler(origin: string, runtime: RuntimeHandler): 
         const headers = new Headers(request.headers);
         headers.set("authorization", `Bearer ${props.runtimeToken}`);
         headers.delete("cookie");
+        headers.delete("Cf-Access-Jwt-Assertion");
         return runtime(new Request(request, { headers }), env);
       },
     },
@@ -84,9 +86,13 @@ export function createMcpOAuthHandler(origin: string, runtime: RuntimeHandler): 
     defaultHandler: {
       async fetch(request: Request, env: CloudflareEnv): Promise<Response> {
         if (new URL(request.url).pathname !== authorizePath) return runtime(request, env);
-        if (!env.OOMOL_CONNECT_ADMIN_TOKEN?.trim() || !env.OOMOL_CONNECT_ENCRYPTION_KEY?.trim()) {
-          return localError("Administrator authentication and encrypted storage are required.", 503);
+        if (request.method !== "GET" && request.method !== "POST") return localError("Method not allowed.", 405);
+        if (request.method === "POST" && request.headers.get("origin") !== origin) {
+          return localError("Invalid request origin.", 403);
         }
+        const subject = await verifyAccessSubject(request, env);
+        if (subject === undefined) return localError("Cloudflare Access sign-in is required.", 401);
+        if (!env.OOMOL_CONNECT_ENCRYPTION_KEY?.trim()) return localError("Encrypted storage is required.", 503);
         const oauth = getOAuthApi(options, env);
         try {
           if (request.method === "GET") {
@@ -109,8 +115,6 @@ export function createMcpOAuthHandler(origin: string, runtime: RuntimeHandler): 
               headers: consent.headers,
             });
           }
-          if (request.method !== "POST") return localError("Method not allowed.", 405);
-          if (request.headers.get("origin") !== origin) return localError("Invalid request origin.", 403);
           if (!request.headers.get("content-type")?.startsWith("application/x-www-form-urlencoded")) {
             return localError("Expected a form submission.", 415);
           }
@@ -127,9 +131,6 @@ export function createMcpOAuthHandler(origin: string, runtime: RuntimeHandler): 
             return new Response(null, { status: 302, headers: denied.headers });
           }
           if (form.get("decision") !== "approve") return localError("Choose Allow or Deny.", 400);
-          if (!sameToken(form.get("admin_token") ?? "", env.OOMOL_CONNECT_ADMIN_TOKEN.trim())) {
-            return localError("Invalid administrator token. Go back and try again.", 401);
-          }
           const approved = await oauth.approveConsent(request, handle, { scope: [...grantedScopes] });
           const client = await oauth.describeConsent(approved.request);
           const tokens = runtimeTokens(env);
@@ -143,7 +144,7 @@ export function createMcpOAuthHandler(origin: string, runtime: RuntimeHandler): 
           try {
             const authorization = await oauth.completeAuthorization({
               request: approved.request,
-              userId: "administrator",
+              userId: subject,
               metadata: { runtimeTokenId: backing.record.id },
               scope: approved.request.scope,
               props: { runtimeToken: backing.token },

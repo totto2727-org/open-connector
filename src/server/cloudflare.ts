@@ -1,6 +1,7 @@
 import type { CatalogStore } from "../catalog-store.ts";
 import type { AssetsBinding, KVNamespaceBinding, R2BucketBinding } from "./cloudflare/cloudflare-bindings.ts";
 import type { CloudflareEnv } from "./cloudflare/cloudflare-env.ts";
+import type { McpOAuthHandler } from "./cloudflare/mcp-oauth.ts";
 import type { ConnectApp } from "./connect-app.ts";
 import type { Logger } from "./logger.ts";
 import type { ISecretCodec } from "./secrets/secret-codec-core.ts";
@@ -37,6 +38,7 @@ interface CloudflareExecutionContext {
 const catalogCache = new PromiseCache<CatalogStore>();
 const secretCodecCache = new PromiseCache<ISecretCodec>();
 const appCache = new PromiseCache<ConnectApp>();
+const mcpOAuthCache = new PromiseCache<McpOAuthHandler>();
 
 export default {
   async scheduled(_event: unknown, env: CloudflareEnv, ctx: CloudflareExecutionContext): Promise<void> {
@@ -60,9 +62,28 @@ export default {
     };
     ctx.waitUntil(Promise.all([cleanup.run(), triggerCleanup()]).then(() => undefined));
   },
-  async fetch(request: Request, env: CloudflareEnv, _ctx: CloudflareExecutionContext): Promise<Response> {
+  async fetch(request: Request, env: CloudflareEnv, ctx: CloudflareExecutionContext): Promise<Response> {
+    const { origin, pathname } = new URL(request.url);
+    const mcpOrigin = env.OPEN_CONNECTOR_MCP_OAUTH_ORIGIN?.trim();
+    const mcpOAuthEndpoint = pathname.startsWith("/oauth/mcp/");
+    if (
+      mcpOrigin?.startsWith("https://") &&
+      origin === mcpOrigin &&
+      (pathname === "/mcp" || mcpOAuthEndpoint || pathname.startsWith("/.well-known/oauth-"))
+    ) {
+      if (!env.OAUTH_KV) {
+        return new Response("MCP OAuth storage is not configured.", { status: 503 });
+      }
+      const oauth = await mcpOAuthCache.get(origin, async () => {
+        const { createMcpOAuthHandler } = await import("./cloudflare/mcp-oauth.ts");
+        return createMcpOAuthHandler(origin, fetchRuntime);
+      });
+      return oauth.fetch(request, env, ctx);
+    }
+    if (mcpOAuthEndpoint) {
+      return new Response(null, { status: 404 });
+    }
     const verifyAdminRequest = await accessAdminVerifier(env);
-    const { pathname } = new URL(request.url);
     if (
       verifyAdminRequest &&
       pathname !== "/health" &&
@@ -74,18 +95,22 @@ export default {
         headers: { "Cache-Control": "no-store" },
       });
     }
-    setPrivateNetworkAccessAllowed(parsePrivateNetworkAccessFlag(env.OOMOL_CONNECT_ALLOW_PRIVATE_NETWORK));
-    setEgressTrustedHosts(parseEgressTrustedHosts(env.OOMOL_CONNECT_EGRESS_TRUSTED_HOSTS));
-    const publicOrigin = resolvePublicOrigin(request, env);
-    const { app } = await appCache.get(createCacheKey(env, publicOrigin), () => createCloudflareApp(env, publicOrigin));
-    const response = await app.fetch(request, env);
-    if (response.status === 404 && env.ASSETS && shouldServeAsset(request)) {
-      return env.ASSETS.fetch(request);
-    }
-
-    return response;
+    return fetchRuntime(request, env);
   },
 };
+
+async function fetchRuntime(request: Request, env: CloudflareEnv): Promise<Response> {
+  setPrivateNetworkAccessAllowed(parsePrivateNetworkAccessFlag(env.OOMOL_CONNECT_ALLOW_PRIVATE_NETWORK));
+  setEgressTrustedHosts(parseEgressTrustedHosts(env.OOMOL_CONNECT_EGRESS_TRUSTED_HOSTS));
+  const publicOrigin = resolvePublicOrigin(request, env);
+  const { app } = await appCache.get(createCacheKey(env, publicOrigin), () => createCloudflareApp(env, publicOrigin));
+  const response = await app.fetch(request, env);
+  if (response.status === 404 && env.ASSETS && shouldServeAsset(request)) {
+    return env.ASSETS.fetch(request);
+  }
+
+  return response;
+}
 
 async function createCloudflareApp(env: CloudflareEnv, publicOrigin: string): Promise<ConnectApp> {
   const assets = env.ASSETS;

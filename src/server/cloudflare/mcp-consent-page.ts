@@ -25,9 +25,7 @@ ${details.redirectIsLoopback ? "<p>This sends access to an app on your computer.
 <p>Actions run with your connected accounts, including write Actions. Your gateway's policies still apply. It does not grant access to administrator settings, raw proxies, or triggers.</p>
 <p>A separate API Key will appear in your console. Delete it there to revoke this connection.</p>
 <form method="post" action="/oauth/mcp/authorize"><input type="hidden" name="handle" value="${escapeHtml(handle)}">
-<label for="admin-token">Administrator token</label><input id="admin-token" type="password" name="admin_token" autocomplete="off" required maxlength="1024">
-<small>Your administrator token stays with OpenConnector and is never sent to the client.</small>
-<p><button name="decision" value="approve">Allow access</button><button name="decision" value="deny" formnovalidate>Deny</button></p></form></main></body></html>`;
+<p><button name="decision" value="approve">Allow access</button><button name="decision" value="deny">Deny</button></p></form></main></body></html>`;
 }
 
 function escapeHtml(value: string): string {

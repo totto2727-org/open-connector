@@ -3,13 +3,17 @@
   "name": "open-connector",
   "main": "src/server/cloudflare.ts",
   "compatibility_date": "2026-07-02",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "workers_dev": true,
   "preview_urls": false,
-  "routes": [{ "pattern": "open-connector.totto2727.dev", "custom_domain": true }],
+  "routes": [
+    { "pattern": "open-connector.totto2727.dev", "custom_domain": true },
+    { "pattern": "open-connector-api.totto2727.dev", "custom_domain": true },
+  ],
   "vars": {
     "OPEN_CONNECTOR_ACCESS_CONSOLE_ORIGIN": "https://open-connector.totto2727.dev",
     "OPEN_CONNECTOR_ACCESS_TEAM_DOMAIN": "totto2727.cloudflareaccess.com",
+    "OPEN_CONNECTOR_MCP_OAUTH_ORIGIN": "https://open-connector-api.totto2727.dev",
   },
   "cache": {
     "enabled": true,
@@ -28,6 +32,7 @@
       "persist": true,
     },
   },
+  "kv_namespaces": [{ "binding": "OAUTH_KV" }],
   "d1_databases": [
     {
       "binding": "DB",
