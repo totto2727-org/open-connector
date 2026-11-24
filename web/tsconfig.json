@@ -1,6 +1,7 @@
 {
   "extends": "@hyrious/configs/tsconfig.casual.json",
   "compilerOptions": {
+    "allowImportingTsExtensions": true,
     "lib": ["ES2024", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
     "noEmit": true,
