@@ -1,5 +1,6 @@
 import type { D1DatabaseBinding, D1PreparedStatementBinding } from "../../cloudflare/cloudflare-bindings.ts";
 
+// oxlint-disable-next-line rules/no-node-imports -- The in-memory D1 binding runs the real SQLite migrations and transactions.
 import { DatabaseSync } from "node:sqlite";
 import { defaultMigrationSource } from "../migration-source.ts";
 

@@ -259,6 +259,7 @@ async function openRuntime(options: ConnectorRuntimeOptions): Promise<ConnectorR
         );
         return response;
       },
+      // oxlint-disable-next-line typescript/promise-function-async -- Repeated shutdown calls return the same in-flight close promise.
       close() {
         if (!closing) {
           closing = Promise.resolve().then(async () => {

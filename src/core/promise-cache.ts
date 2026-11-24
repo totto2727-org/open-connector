@@ -16,6 +16,7 @@ export class PromiseCache<T> {
    * or is empty. `create` runs synchronously on a miss, so a burst of concurrent callers arriving
    * before the first one settles all share the same promise.
    */
+  // oxlint-disable-next-line typescript/promise-function-async -- Every caller must receive the same cached promise instance.
   get(key: string, create: () => Promise<T>): Promise<T> {
     if (this.entry?.key === key) {
       return this.entry.value;

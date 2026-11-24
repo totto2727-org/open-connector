@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+// oxlint-disable-next-line rules/no-node-imports -- These tests write legacy SQLite fixtures with the same native driver as the adapter.
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AesGcmSecretCodec } from "../../secrets/secret-codec.ts";

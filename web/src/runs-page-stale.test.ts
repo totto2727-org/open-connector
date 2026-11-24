@@ -214,12 +214,16 @@ describe("RunsPage service loading", () => {
   });
 });
 
-function renderRunsPage(service: string | null, nextCursor?: string): ReactNode {
+function renderRunsPage(service: string | null, nextCursor?: string): ReactElement {
   routerState.searchParams = service ? new URLSearchParams({ service }) : new URLSearchParams();
   hookState.effects = [];
   hookState.refIndex = 0;
   hookState.stateIndex = 0;
-  return RunsPage({ initialRuns: [run("initial-1", "hackernews")], nextCursor });
+  const element = RunsPage({ initialRuns: [run("initial-1", "hackernews")], nextCursor });
+  if (!isValidElement(element)) {
+    throw new Error("Expected RunsPage to render a React element.");
+  }
+  return element;
 }
 
 function runLatestEffect(): void {

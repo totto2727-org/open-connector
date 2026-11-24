@@ -132,6 +132,7 @@ export class TransitFileService implements IStagedTransitFileService {
    * bounded batches, so its size never turns into that many concurrent
    * filesystem requests on the heap.
    */
+  // oxlint-disable-next-line typescript/promise-function-async -- Callers waiting for the same follow-up sweep share its promise instance.
   cleanupExpired(): Promise<void> {
     if (this.sweeping) {
       // The running sweep may have read the directory before this call:
@@ -148,6 +149,7 @@ export class TransitFileService implements IStagedTransitFileService {
     return this.startSweep();
   }
 
+  // oxlint-disable-next-line typescript/promise-function-async -- Return the sweep promise stored for concurrent callers.
   private startSweep(): Promise<void> {
     if (this.sweeping) {
       return this.sweeping;

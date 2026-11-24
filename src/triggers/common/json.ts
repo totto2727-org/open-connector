@@ -1,5 +1,7 @@
+// oxlint-disable-next-line rules/no-readonly -- TypeScript needs a direct readonly array type for this recursive JSON union.
 export type JsonValue = null | boolean | number | string | readonly JsonValue[] | JsonObject;
 
+// oxlint-disable-next-line rules/no-readonly -- A mapped object type breaks this recursive JSON index signature in TypeScript.
 export type JsonObject = { readonly [key: string]: JsonValue };
 
 type Frame = {

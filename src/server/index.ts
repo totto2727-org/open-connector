@@ -156,6 +156,7 @@ async function main(): Promise<void> {
     // A startup failure above closes the database in the catch. From here this chain owns it; a bind failure never
     // reaches it and ends the process through the server's unhandled 'error' event instead.
     waitForShutdown(server, runtime)
+      // oxlint-disable-next-line typescript/no-misused-promises -- Promise.finally waits for database shutdown and propagates a close failure.
       .finally(() => runtime.close())
       .catch(reportFailure);
   } catch (error) {

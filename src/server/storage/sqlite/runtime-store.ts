@@ -19,8 +19,10 @@ import type { RuntimeDatabase } from "../runtime-database.ts";
 import type { IRuntimePolicyStore, RuntimePolicyRecord } from "../runtime-policy-store.ts";
 import type { IRunLogStore, RunLog, RunLogListInput, RunLogPage, RunLogWriteResult } from "../runtime-store.ts";
 import type { IRuntimeTokenStore, RuntimeTokenRecord } from "../runtime-token-service.ts";
+// oxlint-disable-next-line rules/no-node-imports -- The SQLite adapter uses the native statement type to bind values and read rows.
 import type { StatementSync } from "node:sqlite";
 
+// oxlint-disable-next-line rules/no-node-imports -- The local backend opens the existing database with the native SQLite driver.
 import { DatabaseSync } from "node:sqlite";
 import { parseRuntimeActionHttpResult } from "../../api/runtime-api.ts";
 import { PlainTextSecretCodec } from "../../secrets/secret-codec-core.ts";
