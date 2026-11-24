@@ -4,12 +4,14 @@ import { baiduNetdiskActions } from "./actions.ts";
 
 export const baiduNetdiskOAuthScopes: string[] = ["basic", "netdisk"];
 
+// oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
 export const provider: ProviderDefinition = {
   service: "baidu_netdisk",
   displayName: "Baidu Netdisk",
   categories: ["Storage", "Productivity"],
   authTypes: ["oauth2"],
   auth: [
+    // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
     {
       type: "oauth2",
       authorizationUrl: "https://openapi.baidu.com/oauth/2.0/authorize",

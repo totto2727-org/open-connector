@@ -34,6 +34,7 @@ const pageSizeSchema = s.integer("The number of records to request from Ambivo."
 
 const pageNumSchema = s.integer("The 1-indexed Ambivo page number to request.", { minimum: 1 });
 
+// oxlint-disable-next-line eslint/sort-keys -- This ordered map is spread into published input schemas.
 const personWriteFields = {
   name: s.nonEmptyString("Full name for the Ambivo lead or contact."),
   email: s.nullable(s.string("Primary email address for the Ambivo lead or contact.", { maxLength: 254 })),
@@ -65,6 +66,7 @@ const personWriteFields = {
 
 const listRecordsInputSchema = s.object(
   "Query parameters for listing Ambivo CRM records.",
+  // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
   {
     matchFilter: matchFilterSchema,
     evalObjectId: s.boolean("Whether Ambivo should evaluate ObjectId syntax in matchFilter."),
@@ -81,6 +83,7 @@ const listRecordsInputSchema = s.object(
 
 const listContactsInputSchema = s.object(
   "Query parameters for listing Ambivo CRM contacts.",
+  // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
   {
     matchFilter: matchFilterSchema,
     evalObjectId: s.boolean("Whether Ambivo should evaluate ObjectId syntax in matchFilter."),
@@ -94,6 +97,7 @@ const listContactsInputSchema = s.object(
   },
 );
 
+// oxlint-disable-next-line eslint/sort-keys -- This ordered map is spread into published input schemas.
 const taskWriteFields = {
   name: s.nonEmptyString("Task title."),
   description: s.nullable(s.string("Task details.", { maxLength: 10000 })),
@@ -114,6 +118,7 @@ const taskWriteFields = {
 const crmRecordSchema = s.looseObject("The Ambivo CRM record returned by the API.");
 
 const paginatedRecordListSchema = (description: string, arrayField: string, itemDescription: string) =>
+  // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
   s.requiredObject(description, {
     [arrayField]: s.array(itemDescription, crmRecordSchema),
     pageSize: s.nullable(s.integer("The Ambivo page size returned by the API.")),
@@ -121,6 +126,7 @@ const paginatedRecordListSchema = (description: string, arrayField: string, item
     raw: s.looseObject("The raw Ambivo response payload."),
   });
 
+// oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
 const recordOutputSchema = s.requiredObject("The Ambivo CRM record response.", {
   record: crmRecordSchema,
   raw: s.looseObject("The raw Ambivo response payload."),
@@ -199,6 +205,7 @@ export const ambivoActions: ActionDefinition[] = [
     description: "List Ambivo CRM tasks with optional filters, sorting, and pagination.",
     inputSchema: s.object(
       "Query parameters for listing Ambivo CRM tasks.",
+      // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
       {
         matchFilter: matchFilterSchema,
         sort: sortSchema,
@@ -226,6 +233,7 @@ export const ambivoActions: ActionDefinition[] = [
     description: "Update an existing Ambivo CRM task by ID.",
     inputSchema: s.object(
       "Fields for updating an Ambivo task.",
+      // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
       {
         taskId: s.nonEmptyString("The Ambivo task record ID."),
         ...taskWriteFields,

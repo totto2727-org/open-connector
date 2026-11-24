@@ -4,6 +4,7 @@ import { qqMailActions } from "./actions.ts";
 
 export const nodeOnly = true;
 
+// oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
 export const provider: ProviderDefinition = {
   service: "qq_mail",
   displayName: "QQ Mail",
@@ -12,9 +13,11 @@ export const provider: ProviderDefinition = {
   categories: ["Communication", "Productivity"],
   authTypes: ["custom_credential"],
   auth: [
+    // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
     {
       type: "custom_credential",
       fields: [
+        // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
         {
           key: "email",
           label: "Email Address",
@@ -24,6 +27,7 @@ export const provider: ProviderDefinition = {
           placeholder: "user@qq.com",
           description: "The full QQ Mail address to connect, such as user@qq.com.",
         },
+        // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
         {
           key: "authorizationCode",
           label: "Authorization Code",

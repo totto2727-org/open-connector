@@ -5,6 +5,7 @@ import { clickupMcpActions } from "./actions.ts";
 const clickupMcpEndpoint = "https://mcp.clickup.com/mcp";
 
 /** ClickUp provider backed by ClickUp's official remote MCP server. */
+// oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
 export const provider: ProviderDefinition = {
   service: "clickup_mcp",
   displayName: "ClickUp MCP",
@@ -12,6 +13,7 @@ export const provider: ProviderDefinition = {
   categories: ["Productivity"],
   authTypes: ["oauth2"],
   auth: [
+    // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
     {
       type: "oauth2",
       authorizationUrl: "https://mcp.clickup.com/oauth/authorize",

@@ -4,6 +4,7 @@ import { neteaseMailActions } from "./actions.ts";
 
 export const nodeOnly = true;
 
+// oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
 export const provider: ProviderDefinition = {
   service: "netease_mail",
   displayName: "NetEase Mail",
@@ -12,9 +13,11 @@ export const provider: ProviderDefinition = {
   categories: ["Communication", "Productivity"],
   authTypes: ["custom_credential"],
   auth: [
+    // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
     {
       type: "custom_credential",
       fields: [
+        // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
         {
           key: "email",
           label: "Email Address",
@@ -24,6 +27,7 @@ export const provider: ProviderDefinition = {
           placeholder: "user@163.com",
           description: "The full personal NetEase Mail address to connect, using 163.com, 126.com, or yeah.net.",
         },
+        // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
         {
           key: "authorizationCode",
           label: "Authorization Code",

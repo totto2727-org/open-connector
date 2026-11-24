@@ -24,6 +24,7 @@ const serverTypeSchema = s.stringEnum("The Wind MCP service family that owns the
   ...aifinMarketServerTypes,
 ]);
 
+// oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
 const toolAnnotationsSchema = s.looseObject("MCP behavior hints supplied by Wind.", {
   title: s.optional(s.string("A human-readable title for the tool.")),
   readOnlyHint: s.optional(s.boolean("Whether the tool is expected not to modify data.")),
@@ -36,6 +37,7 @@ const toolAnnotationsSchema = s.looseObject("MCP behavior hints supplied by Wind
 
 const toolSchema = s.object(
   "A tool currently exposed by one Wind MCP service.",
+  // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
   {
     name: s.nonEmptyString("The exact Wind MCP tool name to pass to call_tool."),
     description: s.string("The current tool description supplied by Wind MCP."),
@@ -56,6 +58,7 @@ const windcodeSchema = s.nonWhitespaceString(
   { maxLength: 2_000 },
 );
 
+// oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
 const priceIndicatorInputSchema = s.object("Input for reading current price indicators for up to 50 securities.", {
   windcode: windcodeSchema,
   indexes: s.optional(
@@ -84,6 +87,7 @@ const klinePeriodSchema = s.stringEnum("The requested K-line aggregation period.
 
 const klineInputSchema = s.object(
   "Input for reading a security K-line series over an explicit date range.",
+  // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
   {
     windcode: s.nonWhitespaceString("The Wind security name or code.", {
       maxLength: 200,
@@ -125,6 +129,7 @@ const documentSearchInputSchema = s.object(
 
 const economicDataInputSchema = s.object(
   "Input for searching or fetching Wind EDB economic indicators.",
+  // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
   {
     executionMode: s.stringEnum("Whether to search indicators, fetch values, or do both.", [
       "search",
@@ -283,6 +288,7 @@ export const aifinMarketActions: readonly ProviderActionDefinition[] = [
     followUpActions: ["aifinmarket.list_tools"],
     inputSchema: s.object(
       "Input for invoking one current Wind MCP tool.",
+      // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
       {
         serverType: serverTypeSchema,
         toolName: s.nonEmptyString("The exact tool name returned by list_tools."),

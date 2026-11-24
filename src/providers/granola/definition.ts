@@ -5,12 +5,14 @@ import { granolaMcpEndpoint, granolaOAuthIssuer } from "./endpoints.ts";
 
 const service = "granola";
 
+// oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
 export const provider: ProviderDefinition = {
   service,
   displayName: "Granola",
   categories: ["AI", "Productivity"],
   authTypes: ["oauth2", "api_key"],
   auth: [
+    // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
     {
       type: "oauth2",
       authorizationUrl: `${granolaOAuthIssuer}/oauth2/authorize`,
@@ -29,6 +31,7 @@ export const provider: ProviderDefinition = {
         ],
       },
     },
+    // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
     {
       type: "api_key",
       label: "API Key",

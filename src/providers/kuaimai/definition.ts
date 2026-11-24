@@ -5,15 +5,18 @@ import { kuaimaiActions } from "./actions.ts";
 const documentationUrl =
   "https://open.kuaimai.com/docs/api/API%E5%AF%B9%E6%8E%A5%E8%AF%B4%E6%98%8E/%E6%8E%A5%E5%85%A5%E6%8C%87%E5%8D%97/";
 
+// oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
 export const provider: ProviderDefinition = {
   service: "kuaimai",
   displayName: "Kuaimai ERP",
   categories: ["Productivity", "Data", "Cross Border E-commerce"],
   authTypes: ["custom_credential"],
   auth: [
+    // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
     {
       type: "custom_credential",
       fields: [
+        // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
         {
           key: "appKey",
           label: "APP Key",
@@ -24,6 +27,7 @@ export const provider: ProviderDefinition = {
           description:
             "The application key issued after Kuaimai approves Open Platform access: https://open.kuaimai.com/applyApp/",
         },
+        // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
         {
           key: "appSecret",
           label: "APP Secret",
@@ -33,6 +37,7 @@ export const provider: ProviderDefinition = {
           placeholder: "Paste your Kuaimai APP Secret",
           description: `The secret paired with the approved APP Key and used to sign requests. See ${documentationUrl}`,
         },
+        // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
         {
           key: "accessToken",
           label: "Access Token",
@@ -42,6 +47,7 @@ export const provider: ProviderDefinition = {
           placeholder: "Paste your Kuaimai access token",
           description: `The Open Platform session token sent on each request. See ${documentationUrl}`,
         },
+        // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
         {
           key: "refreshToken",
           label: "Refresh Token",

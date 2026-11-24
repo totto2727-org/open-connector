@@ -31,12 +31,19 @@ When synchronizing upstream, preserve this filename policy and disable any newly
 
 ## Shared Oxlint rules
 
-The fork adds the `@totto2727/oxlint` development dependency and enables four shared rules in `.oxlintrc.json`: `no-eslint-disable-comments`, `no-import-from-barrel-package`, `no-jsx-script-tag`, and `require-disable-reason`.
+The fork extends the public application preset from `@totto2727/oxlint` in `oxlint.config.ts`.
 The upstream baseline at `ac0cf61313f766ed8c660118a1d53137dd29ae8c` uses native Oxlint without the shared plugin.
-The fork keeps upstream's native rules, npm scripts, and exclusions; the shared rules apply to all tracked JavaScript and TypeScript, including Vitest suites.
-The generated JSON catalog remains outside lint scope.
-The fork does not use the full preset because it would require widespread upstream source and test changes, including changes to relative imports and Vitest conventions.
-The plugin runs during development and CI only; it does not change runtime source, test source, or deployment behavior.
+Native Oxlint discovery loads the type-aware configuration for the existing lint commands.
+The configuration selects browser globals for the Vite UI and Node globals for the server, tooling, and examples.
+The generated provider registry, action contracts, and JSON catalog stay outside lint scope.
+The ordered action and provider definition lists contain exact paths to declarative files.
+The action definitions preserve field order in the catalog and web parameter summaries.
+The provider definitions preserve the metadata key order written to the catalog.
+These files keep the shared rules with a key-sorting exception. In mixed files, the exception applies to the individual serialized object.
+Add an exact path only when the file contains only public declarations and sorting the object keys changes the catalog bytes or the displayed field order.
+Runtime and provider sources retain their native execution model and public contracts.
+Parent-relative imports follow upstream module layout and remain subject to the preset.
+Revisit the import migration when upstream adopts compatible paths or a repeatable sync trial demonstrates that the migration can be maintained with a small conflict set.
 
 ## Buffered native HTTP adapter and CLI compatibility
 

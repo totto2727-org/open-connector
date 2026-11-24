@@ -4,12 +4,14 @@ import { excelActions, excelProviderScopes } from "./actions.ts";
 
 const service = "excel";
 
+// oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
 export const provider: ProviderDefinition = {
   service,
   displayName: "Excel",
   categories: ["Productivity", "Data"],
   authTypes: ["oauth2"],
   auth: [
+    // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
     {
       type: "oauth2",
       authorizationUrl: "https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize",
@@ -23,6 +25,7 @@ export const provider: ProviderDefinition = {
         response_mode: "query",
       },
       clientConfigFields: [
+        // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
         {
           key: "tenant",
           label: "Tenant",

@@ -5,6 +5,7 @@ import { appleAdsActions } from "./actions.ts";
 const apiSettingsDocUrl =
   "https://developer.apple.com/documentation/apple-ads-platform-api/implementing-oauth-for-the-apple-ads-platform-api";
 
+// oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
 export const provider: ProviderDefinition = {
   service: "apple_ads",
   displayName: "Apple Ads",
@@ -13,9 +14,11 @@ export const provider: ProviderDefinition = {
   categories: ["Marketing", "Data"],
   authTypes: ["custom_credential"],
   auth: [
+    // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
     {
       type: "custom_credential",
       fields: [
+        // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
         {
           key: "clientId",
           label: "Client ID",
@@ -25,6 +28,7 @@ export const provider: ProviderDefinition = {
           placeholder: "SEARCHADS.aeb3ef5f-0c5a-4f2a-99c8-fca83f25a9",
           description: `The clientId shown after saving a public key under Apple Ads Account Settings > API. ${apiSettingsDocUrl}`,
         },
+        // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
         {
           key: "teamId",
           label: "Team ID",
@@ -34,6 +38,7 @@ export const provider: ProviderDefinition = {
           placeholder: "SEARCHADS.hgw3ef3p-0w7a-8a2n-77c8-scv83f25a7",
           description: `The teamId shown under Apple Ads Account Settings > API. ${apiSettingsDocUrl}`,
         },
+        // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
         {
           key: "keyId",
           label: "Key ID",
@@ -43,6 +48,7 @@ export const provider: ProviderDefinition = {
           placeholder: "a273d0d3-4d9e-458c-a173-0db8619ca7d7",
           description: `The keyId assigned to the public key uploaded under Apple Ads Account Settings > API. ${apiSettingsDocUrl}`,
         },
+        // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
         {
           key: "privateKey",
           label: "Private Key (PEM)",
@@ -53,6 +59,7 @@ export const provider: ProviderDefinition = {
           description:
             "The EC P-256 private key paired with the public key uploaded to Apple Ads. SEC1 and PKCS#8 PEM are accepted, including escaped \\n line breaks.",
         },
+        // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
         {
           key: "adAccountId",
           label: "Ad Account ID",

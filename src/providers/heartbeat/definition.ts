@@ -4,12 +4,14 @@ import { heartbeatActions } from "./actions.ts";
 
 const credentialHelpUrl = "https://help.heartbeat.chat/hc/en-us/articles/33257714954001-Heartbeat-API";
 
+// oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
 export const provider: ProviderDefinition = {
   service: "heartbeat",
   displayName: "Heartbeat",
   categories: ["Communication", "Social"],
   authTypes: ["api_key"],
   auth: [
+    // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
     {
       type: "api_key",
       label: "API Key",

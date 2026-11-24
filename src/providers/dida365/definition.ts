@@ -4,12 +4,14 @@ import { dida365Actions, dida365OAuthScopes } from "./actions.ts";
 
 const service = "dida365";
 
+// oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
 export const provider: ProviderDefinition = {
   service,
   displayName: "Dida365",
   categories: ["Productivity"],
   authTypes: ["oauth2"],
   auth: [
+    // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
     {
       type: "oauth2",
       authorizationUrl: "https://dida365.com/oauth/authorize",

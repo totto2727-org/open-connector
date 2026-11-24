@@ -13,6 +13,7 @@ import { socialActions } from "./social-actions.ts";
 
 const service = "aisa";
 
+// oxlint-disable-next-line eslint/sort-keys -- This ordered map is spread into published input schemas.
 const paginationInput = {
   limit: s.integer("The maximum number of records to return.", { minimum: 0, maximum: 1000 }),
   cursor: s.string("The pagination cursor returned by the previous response."),
@@ -30,6 +31,7 @@ const kalshiMarketsAction = defineProviderAction(service, {
   requiredScopes: [],
   inputSchema: s.object(
     "Filters for listing Kalshi prediction markets through AIsa.",
+    // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
     {
       ...paginationInput,
       tickers: s.string("Comma-separated Kalshi market tickers to retrieve."),
@@ -82,6 +84,7 @@ const kalshiTradesAction = defineProviderAction(service, {
   requiredScopes: [],
   inputSchema: s.object(
     "Filters for listing executed Kalshi trades through AIsa.",
+    // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
     {
       ...paginationInput,
       ticker: s.string("The Kalshi market ticker to filter by."),
@@ -100,6 +103,7 @@ const kalshiTradesAction = defineProviderAction(service, {
   }),
 });
 
+// oxlint-disable-next-line eslint/sort-keys -- This ordered map is spread into published input schemas.
 const polymarketCommonInput = {
   ...offsetPaginationInput,
   order: s.string("A comma-separated list of fields used to order the results."),
@@ -113,6 +117,7 @@ const polymarketMarketsAction = defineProviderAction(service, {
   requiredScopes: [],
   inputSchema: s.object(
     "Filters for listing Polymarket markets through AIsa.",
+    // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
     {
       ...polymarketCommonInput,
       ids: s.array("The Polymarket market IDs to return.", s.integer("A Polymarket market ID.")),
@@ -172,6 +177,7 @@ const polymarketEventsAction = defineProviderAction(service, {
   requiredScopes: [],
   inputSchema: s.object(
     "Filters for listing Polymarket events through AIsa.",
+    // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
     {
       ...polymarketCommonInput,
       ids: s.array("The Polymarket event IDs to return.", s.integer("A Polymarket event ID.")),
@@ -237,6 +243,7 @@ const polymarketActivityAction = defineProviderAction(service, {
   requiredScopes: [],
   inputSchema: s.object(
     "Filters for getting one wallet's Polymarket activity through AIsa.",
+    // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
     {
       user: s.string("The wallet address whose Polymarket activity should be returned.", {
         pattern: "^0x[0-9a-fA-F]{40}$",
@@ -280,6 +287,7 @@ const usageAction = defineProviderAction(service, {
   requiredScopes: [],
   inputSchema: s.object(
     "The time window for getting AIsa account or API key usage.",
+    // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
     {
       startTimestamp: s.integer("The usage window start as a positive Unix timestamp.", {
         minimum: 1,

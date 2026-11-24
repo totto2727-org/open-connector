@@ -6,6 +6,7 @@ import { triggerPermissions } from "./trigger-permissions.ts";
 
 const service = "slack";
 const slackAuthorizationOptions: OAuthAuthorizationOption[] = [
+  // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
   {
     id: "channels:read",
     label: "Public channels",
@@ -14,6 +15,7 @@ const slackAuthorizationOptions: OAuthAuthorizationOption[] = [
     defaultSelected: true,
     risk: "standard",
   },
+  // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
   {
     id: "channels:history",
     label: "Public channel messages",
@@ -23,6 +25,7 @@ const slackAuthorizationOptions: OAuthAuthorizationOption[] = [
     risk: "sensitive",
     requires: ["channels:read"],
   },
+  // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
   {
     id: "groups:read",
     label: "Private channels",
@@ -31,6 +34,7 @@ const slackAuthorizationOptions: OAuthAuthorizationOption[] = [
     defaultSelected: true,
     risk: "sensitive",
   },
+  // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
   {
     id: "groups:history",
     label: "Private channel messages",
@@ -40,6 +44,7 @@ const slackAuthorizationOptions: OAuthAuthorizationOption[] = [
     risk: "sensitive",
     requires: ["groups:read"],
   },
+  // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
   {
     id: "users:read",
     label: "User directory",
@@ -48,6 +53,7 @@ const slackAuthorizationOptions: OAuthAuthorizationOption[] = [
     defaultSelected: true,
     risk: "standard",
   },
+  // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
   {
     id: "im:read",
     label: "Direct messages",
@@ -56,6 +62,7 @@ const slackAuthorizationOptions: OAuthAuthorizationOption[] = [
     defaultSelected: true,
     risk: "sensitive",
   },
+  // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
   {
     id: "im:history",
     label: "Direct message history",
@@ -65,6 +72,7 @@ const slackAuthorizationOptions: OAuthAuthorizationOption[] = [
     risk: "sensitive",
     requires: ["im:read"],
   },
+  // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
   {
     id: "mpim:read",
     label: "Group direct messages",
@@ -73,6 +81,7 @@ const slackAuthorizationOptions: OAuthAuthorizationOption[] = [
     defaultSelected: true,
     risk: "sensitive",
   },
+  // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
   {
     id: "mpim:history",
     label: "Group direct message history",
@@ -82,6 +91,7 @@ const slackAuthorizationOptions: OAuthAuthorizationOption[] = [
     risk: "sensitive",
     requires: ["mpim:read"],
   },
+  // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
   {
     id: "files:read",
     label: "Files",
@@ -90,6 +100,7 @@ const slackAuthorizationOptions: OAuthAuthorizationOption[] = [
     defaultSelected: true,
     risk: "sensitive",
   },
+  // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
   {
     id: "reactions:read",
     label: "Reactions",
@@ -98,6 +109,7 @@ const slackAuthorizationOptions: OAuthAuthorizationOption[] = [
     defaultSelected: true,
     risk: "standard",
   },
+  // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
   {
     id: "chat:write",
     label: "Send messages",
@@ -106,6 +118,7 @@ const slackAuthorizationOptions: OAuthAuthorizationOption[] = [
     defaultSelected: true,
     risk: "sensitive",
   },
+  // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
   {
     id: "im:write",
     label: "Send direct messages",
@@ -115,6 +128,7 @@ const slackAuthorizationOptions: OAuthAuthorizationOption[] = [
     risk: "sensitive",
     requires: ["im:read"],
   },
+  // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
   {
     id: "files:write",
     label: "Upload files",
@@ -123,6 +137,7 @@ const slackAuthorizationOptions: OAuthAuthorizationOption[] = [
     defaultSelected: true,
     risk: "sensitive",
   },
+  // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
   {
     id: "reactions:write",
     label: "Manage reactions",
@@ -131,6 +146,7 @@ const slackAuthorizationOptions: OAuthAuthorizationOption[] = [
     defaultSelected: true,
     risk: "sensitive",
   },
+  // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
   {
     id: "search:read",
     label: "Legacy message search",
@@ -139,6 +155,7 @@ const slackAuthorizationOptions: OAuthAuthorizationOption[] = [
     defaultSelected: true,
     risk: "sensitive",
   },
+  // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
   {
     id: "search:read.public",
     label: "Public message search",
@@ -147,6 +164,7 @@ const slackAuthorizationOptions: OAuthAuthorizationOption[] = [
     defaultSelected: false,
     risk: "sensitive",
   },
+  // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
   {
     id: "search:read.private",
     label: "Private message search",
@@ -161,12 +179,14 @@ const slackAuthorizationOptions: OAuthAuthorizationOption[] = [
 /**
  * User-authorized Slack provider backed by the Slack Web API.
  */
+// oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
 export const provider: ProviderDefinition = {
   service,
   displayName: "Slack",
   categories: ["Communication", "Productivity"],
   authTypes: ["oauth2", "api_key"],
   auth: [
+    // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
     {
       type: "oauth2",
       authorizationUrl: "https://slack.com/oauth/v2_user/authorize",
@@ -177,6 +197,7 @@ export const provider: ProviderDefinition = {
       tokenEndpointAuthMethod: "client_secret_post",
       authorizationOptions: slackAuthorizationOptions,
     },
+    // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
     {
       type: "api_key",
       label: "Access token",

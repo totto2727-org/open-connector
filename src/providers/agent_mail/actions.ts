@@ -105,6 +105,7 @@ const emptyInputSchema = s.object("No input is required.", {});
 
 const attachmentSchema = s.object(
   "AgentMail attachment metadata.",
+  // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
   {
     attachment_id: s.string("Unique identifier of the attachment."),
     filename: s.string("File name of the attachment."),
@@ -123,6 +124,7 @@ const attachmentSchema = s.object(
 
 const sendAttachmentSchema = s.object(
   "Attachment to include in an AgentMail message or draft.",
+  // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
   {
     filename: s.string("File name of the attachment.", { minLength: 1 }),
     content_type: s.string("MIME type of the attachment.", { minLength: 1 }),
@@ -141,6 +143,7 @@ const headersSchema = s.record(s.string("Header value."), {
 });
 
 const permissionsSchema = s.looseObject(
+  // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
   {
     inbox_read: s.boolean("Read inbox details."),
     inbox_create: s.boolean("Create new inboxes."),
@@ -182,6 +185,7 @@ const permissionsSchema = s.looseObject(
 );
 
 const inboxSchema = s.looseObject(
+  // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
   {
     pod_id: podIdField,
     inbox_id: inboxIdField,
@@ -196,6 +200,7 @@ const inboxSchema = s.looseObject(
 );
 
 const messageSchema = s.looseObject(
+  // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
   {
     inbox_id: inboxIdField,
     thread_id: threadIdField,
@@ -392,6 +397,7 @@ const metricsInputSchema = (description: string, extraFields: Record<string, Jso
 
 const createInboxInputSchema = s.object(
   "Request payload for creating an AgentMail inbox.",
+  // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
   {
     username: s.string("Inbox username. AgentMail generates one when omitted.", { minLength: 1 }),
     domain: s.string("Verified domain used by the inbox. Defaults to agentmail.to.", {
@@ -428,6 +434,7 @@ const updateLabelsInputSchema = (description: string, extraFields: Record<string
 
 const sendMessageInputSchema = s.object(
   "Request payload for sending an AgentMail message.",
+  // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
   {
     inbox_id: inboxIdField,
     labels: labelsField,
@@ -450,6 +457,7 @@ const sendMessageInputSchema = s.object(
 
 const replyToMessageInputSchema = s.object(
   "Request payload for replying to an AgentMail message.",
+  // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
   {
     inbox_id: inboxIdField,
     message_id: messageIdField,
@@ -473,6 +481,7 @@ const replyToMessageInputSchema = s.object(
 
 const replyAllMessageInputSchema = s.object(
   "Request payload for replying to all recipients of an AgentMail message.",
+  // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
   {
     inbox_id: inboxIdField,
     message_id: messageIdField,
@@ -490,6 +499,7 @@ const replyAllMessageInputSchema = s.object(
 
 const forwardMessageInputSchema = s.object(
   "Request payload for forwarding an AgentMail message.",
+  // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
   {
     inbox_id: inboxIdField,
     message_id: messageIdField,
@@ -513,6 +523,7 @@ const forwardMessageInputSchema = s.object(
 
 const createDraftInputSchema = s.object(
   "Request payload for creating an AgentMail draft.",
+  // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
   {
     inbox_id: inboxIdField,
     labels: labelsField,
@@ -550,6 +561,7 @@ const createDraftInputSchema = s.object(
 
 const updateDraftInputSchema = s.object(
   "Request payload for updating an AgentMail draft.",
+  // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
   {
     inbox_id: inboxIdField,
     draft_id: draftIdField,
@@ -567,6 +579,7 @@ const updateDraftInputSchema = s.object(
 
 const sendDraftInputSchema = s.object(
   "Request payload for sending an AgentMail draft.",
+  // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
   {
     inbox_id: inboxIdField,
     draft_id: draftIdField,
@@ -578,6 +591,7 @@ const sendDraftInputSchema = s.object(
 
 const createWebhookInputSchema = s.object(
   "Request payload for creating an AgentMail webhook.",
+  // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
   {
     url: s.url("Webhook endpoint URL."),
     event_types: s.array("Event types this webhook should receive.", webhookEventTypeField, {
@@ -592,6 +606,7 @@ const createWebhookInputSchema = s.object(
 
 const updateWebhookInputSchema = s.object(
   "Request payload for updating an AgentMail webhook.",
+  // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
   {
     webhook_id: webhookIdField,
     add_inbox_ids: stringListField("Inbox IDs to subscribe to the webhook."),
@@ -665,6 +680,7 @@ const createApiKeyInputSchema = (description: string, extraFields: Record<string
 
 const createPodInputSchema = s.object(
   "Request payload for creating an AgentMail pod.",
+  // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
   {
     name: s.string("Name of the pod.", { minLength: 1 }),
     client_id: s.string("Client-side identifier associated with the pod.", { minLength: 1 }),
@@ -820,6 +836,7 @@ const actionDefinitions: AgentMailActionDefinitions = [
     description: "Delete a thread from a specific AgentMail inbox.",
     inputSchema: s.object(
       "Path and query parameters for deleting an AgentMail inbox thread.",
+      // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
       {
         inbox_id: inboxIdField,
         thread_id: threadIdField,
@@ -841,6 +858,7 @@ const actionDefinitions: AgentMailActionDefinitions = [
     name: "get_inbox_thread_attachment",
     operationType: "read",
     description: "Get metadata and download URL for an attachment in an AgentMail inbox thread.",
+    // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
     inputSchema: s.object("Path parameters for fetching an AgentMail inbox thread attachment.", {
       inbox_id: inboxIdField,
       thread_id: threadIdField,
@@ -948,6 +966,7 @@ const actionDefinitions: AgentMailActionDefinitions = [
     name: "get_message_attachment",
     operationType: "read",
     description: "Get metadata and download URL for an attachment on a specific AgentMail message.",
+    // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
     inputSchema: s.object("Path parameters for fetching an AgentMail message attachment.", {
       inbox_id: inboxIdField,
       message_id: messageIdField,
@@ -966,6 +985,7 @@ const actionDefinitions: AgentMailActionDefinitions = [
     operationType: "read",
     description: "Get a presigned download URL for the raw EML version of an AgentMail message.",
     inputSchema: messagePathInputSchema("Path parameters for fetching a raw AgentMail message download URL."),
+    // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
     outputSchema: s.object("Raw AgentMail message download response.", {
       message_id: messageIdField,
       size: s.integer("Size of the raw message in bytes."),
@@ -1120,6 +1140,7 @@ const actionDefinitions: AgentMailActionDefinitions = [
     name: "get_draft_attachment",
     operationType: "read",
     description: "Get metadata and download URL for an attachment on a specific AgentMail draft.",
+    // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
     inputSchema: s.object("Path parameters for fetching an AgentMail draft attachment.", {
       inbox_id: inboxIdField,
       draft_id: draftIdField,
@@ -1229,6 +1250,7 @@ const actionDefinitions: AgentMailActionDefinitions = [
     description: "List events scoped to a specific AgentMail inbox.",
     inputSchema: s.object(
       "Query parameters for listing AgentMail inbox events.",
+      // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
       {
         inbox_id: inboxIdField,
         limit: limitField,
@@ -1285,6 +1307,7 @@ const actionDefinitions: AgentMailActionDefinitions = [
     name: "delete_inbox_api_key",
     operationType: "destructive",
     description: "Delete an API key scoped to a specific AgentMail inbox.",
+    // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
     inputSchema: s.object("Path parameters for deleting an AgentMail inbox API key.", {
       inbox_id: inboxIdField,
       api_key_id: apiKeyIdField,
@@ -1371,6 +1394,7 @@ const actionDefinitions: AgentMailActionDefinitions = [
     description: "Delete an AgentMail thread.",
     inputSchema: s.object(
       "Path and query parameters for deleting an AgentMail thread.",
+      // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
       {
         thread_id: threadIdField,
         permanent: s.boolean("Whether the thread should be permanently deleted."),
@@ -1391,6 +1415,7 @@ const actionDefinitions: AgentMailActionDefinitions = [
     name: "get_thread_attachment",
     operationType: "read",
     description: "Get metadata and download URL for an attachment in an AgentMail thread.",
+    // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
     inputSchema: s.object("Path parameters for fetching an AgentMail thread attachment.", {
       thread_id: threadIdField,
       attachment_id: attachmentIdField,
@@ -1432,6 +1457,7 @@ const actionDefinitions: AgentMailActionDefinitions = [
     name: "get_global_draft_attachment",
     operationType: "read",
     description: "Get metadata and download URL for an attachment on an AgentMail draft.",
+    // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
     inputSchema: s.object("Path parameters for fetching an AgentMail draft attachment.", {
       draft_id: draftIdField,
       attachment_id: attachmentIdField,
@@ -1776,6 +1802,7 @@ const actionDefinitions: AgentMailActionDefinitions = [
     description: "List AgentMail inboxes scoped to a pod.",
     inputSchema: s.object(
       "Query parameters for listing AgentMail pod inboxes.",
+      // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
       {
         pod_id: podIdField,
         limit: limitField,
@@ -1798,6 +1825,7 @@ const actionDefinitions: AgentMailActionDefinitions = [
     description: "Create an AgentMail inbox scoped to a pod.",
     inputSchema: s.object(
       "Request payload for creating an AgentMail pod inbox.",
+      // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
       {
         pod_id: podIdField,
         username: s.string("Inbox username. AgentMail generates one when omitted.", {
@@ -1824,6 +1852,7 @@ const actionDefinitions: AgentMailActionDefinitions = [
     name: "get_pod_inbox",
     operationType: "read",
     description: "Get a single AgentMail inbox scoped to a pod.",
+    // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
     inputSchema: s.object("Path parameters for fetching an AgentMail pod inbox.", {
       pod_id: podIdField,
       inbox_id: inboxIdField,
@@ -1857,6 +1886,7 @@ const actionDefinitions: AgentMailActionDefinitions = [
     name: "delete_pod_inbox",
     operationType: "destructive",
     description: "Delete an AgentMail inbox scoped to a pod.",
+    // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
     inputSchema: s.object("Path parameters for deleting an AgentMail pod inbox.", {
       pod_id: podIdField,
       inbox_id: inboxIdField,
@@ -1953,6 +1983,7 @@ const actionDefinitions: AgentMailActionDefinitions = [
     description: "Delete an AgentMail thread scoped to a pod.",
     inputSchema: s.object(
       "Path and query parameters for deleting an AgentMail pod thread.",
+      // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
       {
         pod_id: podIdField,
         thread_id: threadIdField,
@@ -1974,6 +2005,7 @@ const actionDefinitions: AgentMailActionDefinitions = [
     name: "get_pod_thread_attachment",
     operationType: "read",
     description: "Get metadata and download URL for an attachment in an AgentMail pod thread.",
+    // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
     inputSchema: s.object("Path parameters for fetching an AgentMail pod thread attachment.", {
       pod_id: podIdField,
       thread_id: threadIdField,
@@ -2006,6 +2038,7 @@ const actionDefinitions: AgentMailActionDefinitions = [
     name: "get_pod_draft",
     operationType: "read",
     description: "Get a single AgentMail draft scoped to a pod.",
+    // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
     inputSchema: s.object("Path parameters for fetching an AgentMail pod draft.", {
       pod_id: podIdField,
       draft_id: draftIdField,
@@ -2022,6 +2055,7 @@ const actionDefinitions: AgentMailActionDefinitions = [
     name: "get_pod_draft_attachment",
     operationType: "read",
     description: "Get metadata and download URL for an attachment on an AgentMail pod draft.",
+    // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
     inputSchema: s.object("Path parameters for fetching an AgentMail pod draft attachment.", {
       pod_id: podIdField,
       draft_id: draftIdField,
@@ -2041,6 +2075,7 @@ const actionDefinitions: AgentMailActionDefinitions = [
     description: "List AgentMail domains scoped to a pod.",
     inputSchema: s.object(
       "Query parameters for listing AgentMail pod domains.",
+      // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
       {
         pod_id: podIdField,
         limit: limitField,
@@ -2076,6 +2111,7 @@ const actionDefinitions: AgentMailActionDefinitions = [
     name: "get_pod_domain",
     operationType: "read",
     description: "Get a single AgentMail domain scoped to a pod.",
+    // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
     inputSchema: s.object("Path parameters for fetching an AgentMail pod domain.", {
       pod_id: podIdField,
       domain_id: domainIdField,
@@ -2109,6 +2145,7 @@ const actionDefinitions: AgentMailActionDefinitions = [
     name: "delete_pod_domain",
     operationType: "destructive",
     description: "Delete an AgentMail domain scoped to a pod.",
+    // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
     inputSchema: s.object("Path parameters for deleting an AgentMail pod domain.", {
       pod_id: podIdField,
       domain_id: domainIdField,
@@ -2126,6 +2163,7 @@ const actionDefinitions: AgentMailActionDefinitions = [
     name: "get_pod_domain_zone_file",
     operationType: "read",
     description: "Get the DNS zone file records needed for an AgentMail pod domain.",
+    // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
     inputSchema: s.object("Path parameters for fetching an AgentMail pod domain zone file.", {
       pod_id: podIdField,
       domain_id: domainIdField,
@@ -2142,6 +2180,7 @@ const actionDefinitions: AgentMailActionDefinitions = [
     name: "verify_pod_domain",
     operationType: "write",
     description: "Ask AgentMail to verify a pod domain's DNS records.",
+    // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
     inputSchema: s.object("Path parameters for verifying an AgentMail pod domain.", {
       pod_id: podIdField,
       domain_id: domainIdField,
@@ -2236,6 +2275,7 @@ const actionDefinitions: AgentMailActionDefinitions = [
     description: "List AgentMail API keys scoped to a pod.",
     inputSchema: s.object(
       "Query parameters for listing AgentMail pod API keys.",
+      // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
       {
         pod_id: podIdField,
         limit: limitField,
@@ -2270,6 +2310,7 @@ const actionDefinitions: AgentMailActionDefinitions = [
     name: "delete_pod_api_key",
     operationType: "destructive",
     description: "Delete an API key scoped to a specific AgentMail pod.",
+    // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
     inputSchema: s.object("Path parameters for deleting an AgentMail pod API key.", {
       pod_id: podIdField,
       api_key_id: apiKeyIdField,

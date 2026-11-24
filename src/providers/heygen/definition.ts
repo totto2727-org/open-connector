@@ -10,12 +10,14 @@ const heygenOAuthRefreshTokenUrl = "https://api2.heygen.com/v1/oauth/refresh_tok
 /**
  * HeyGen provider backed by the HeyGen REST API.
  */
+// oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
 export const provider: ProviderDefinition = {
   service,
   displayName: "HeyGen",
   categories: ["AI", "Design & Media"],
   authTypes: ["oauth2", "api_key"],
   auth: [
+    // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
     {
       type: "oauth2",
       authorizationUrl: heygenOAuthAuthorizationUrl,
@@ -30,6 +32,7 @@ export const provider: ProviderDefinition = {
         scope: false,
       },
     },
+    // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
     {
       type: "api_key",
       label: "API Key",

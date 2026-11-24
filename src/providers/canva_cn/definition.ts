@@ -8,12 +8,14 @@ const service = "canva_cn";
  * Canva China uses a separate OAuth application and regional API endpoints
  * from the international Canva platform.
  */
+// oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
 export const provider: ProviderDefinition = {
   service,
   displayName: "Canva China",
   categories: ["Design & Media", "Productivity"],
   authTypes: ["oauth2"],
   auth: [
+    // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
     {
       type: "oauth2",
       authorizationUrl: "https://www.canva.cn/api/oauth/authorize",

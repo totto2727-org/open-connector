@@ -16,12 +16,14 @@ const feishuOAuthScopes = [
  * collaboration workflows without a bot being added to each resource.
  * Uses a user-provided Feishu custom app and the OAuth authorization-code flow.
  */
+// oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
 export const provider: ProviderDefinition = {
   service,
   displayName: "Feishu",
   categories: ["Communication", "Productivity", "Storage"],
   authTypes: ["oauth2"],
   auth: [
+    // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
     {
       type: "oauth2",
       authorizationUrl: "https://accounts.feishu.cn/open-apis/authen/v1/authorize",

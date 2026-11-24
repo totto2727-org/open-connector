@@ -14,6 +14,7 @@ const service = "linear_mcp";
  * The default grant is read-only; the write actions need the optional write
  * scope, asked for through requestedScopes.
  */
+// oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
 export const provider: ProviderDefinition = {
   service,
   displayName: "Linear MCP",
@@ -22,6 +23,7 @@ export const provider: ProviderDefinition = {
   categories: ["Productivity", "Developer Tools"],
   authTypes: ["oauth2"],
   auth: [
+    // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
     {
       type: "oauth2",
       authorizationUrl: `${linearMcpIssuer}/authorize`,

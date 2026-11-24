@@ -14,6 +14,7 @@ const service = "bilibili";
  */
 export const nodeOnly = true;
 
+// oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
 export const provider: ProviderDefinition = {
   service,
   displayName: "Bilibili",
@@ -21,6 +22,7 @@ export const provider: ProviderDefinition = {
   categories: ["Marketing", "Data"],
   authTypes: ["oauth2"],
   auth: [
+    // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
     {
       type: "oauth2",
       authorizationUrl: "https://account.bilibili.com/pc/account-pc/auth/oauth",
@@ -36,6 +38,7 @@ export const provider: ProviderDefinition = {
         scope: false,
       },
       clientConfigFields: [
+        // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
         {
           key: "appSecret",
           label: "App Secret",

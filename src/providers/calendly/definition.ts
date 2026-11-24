@@ -9,12 +9,14 @@ const calendlyOAuthTokenUrl = "https://auth.calendly.com/oauth/token";
 /**
  * Calendly provider backed by the Calendly API v2.
  */
+// oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
 export const provider: ProviderDefinition = {
   service,
   displayName: "Calendly",
   categories: ["Productivity"],
   authTypes: ["oauth2", "api_key"],
   auth: [
+    // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
     {
       type: "oauth2",
       authorizationUrl: calendlyOAuthAuthorizationUrl,
@@ -24,6 +26,7 @@ export const provider: ProviderDefinition = {
       tokenEndpointAuthMethod: "client_secret_basic",
       pkce: { method: "S256" },
     },
+    // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
     {
       type: "api_key",
       label: "Personal Access Token",

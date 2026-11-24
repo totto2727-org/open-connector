@@ -1,5 +1,6 @@
 import type { ProviderDefinition } from "../../core/types.ts";
 
+// oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
 export const provider: ProviderDefinition = {
   service: "projektor",
   displayName: "Projektor",
@@ -7,12 +8,14 @@ export const provider: ProviderDefinition = {
   categories: ["Developer Tools", "Productivity"],
   authTypes: ["api_key"],
   auth: [
+    // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
     {
       type: "api_key",
       label: "API Token",
       placeholder: "Enter your Projektor API token",
       description: "A Projektor API token sent as Authorization: Bearer <token>.",
       extraFields: [
+        // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
         {
           key: "baseUrl",
           label: "Backend API URL",

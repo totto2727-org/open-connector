@@ -22,6 +22,7 @@ const paginationInputSchema = {
 
 const paginationOutputSchema = s.object(
   "Pagination metadata returned by Aircall.",
+  // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
   {
     count: s.integer("The number of resources returned on this page."),
     total: s.integer("The total number of resources matching the request."),
@@ -42,6 +43,7 @@ const listUsersInputSchema = s.object("Input for listing Aircall users with the 
 
 const listCallsInputSchema = s.object(
   "Input for listing Aircall calls.",
+  // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
   {
     ...paginationInputSchema,
     from: unixTimestampSchema,
@@ -58,6 +60,7 @@ const listCallsInputSchema = s.object(
 
 const getCallInputSchema = s.object(
   "Input for retrieving one Aircall call.",
+  // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
   {
     id: idSchema,
     fetchContact: s.boolean("Whether Aircall should include contact details for the call."),

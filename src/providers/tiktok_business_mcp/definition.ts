@@ -4,6 +4,7 @@ import { tiktokBusinessMcpActions } from "./actions.ts";
 
 const scopes = ["mcp:tt4b"];
 
+// oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
 export const provider: ProviderDefinition = {
   service: "tiktok_business_mcp",
   displayName: "TikTok for Business MCP",
@@ -11,6 +12,7 @@ export const provider: ProviderDefinition = {
   categories: ["Marketing", "Advertising"],
   authTypes: ["oauth2"],
   auth: [
+    // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
     {
       type: "oauth2",
       authorizationUrl: "https://business-api.tiktok.com/portal/mcp-tt4b-authorize",

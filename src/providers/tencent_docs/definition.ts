@@ -2,12 +2,14 @@ import type { ProviderDefinition } from "../../core/types.ts";
 
 import { tencentDocsActions, tencentDocsProviderScopes } from "./actions.ts";
 
+// oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
 export const provider: ProviderDefinition = {
   service: "tencent_docs",
   displayName: "Tencent Docs",
   categories: ["Productivity", "Storage"],
   authTypes: ["oauth2"],
   auth: [
+    // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
     {
       type: "oauth2",
       authorizationUrl: "https://docs.qq.com/oauth/v2/authorize",

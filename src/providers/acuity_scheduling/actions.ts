@@ -23,6 +23,7 @@ const labelsSchema = s.array(
   { maxItems: 1 },
 );
 
+// oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
 const accountSchema = s.object("A normalized Acuity Scheduling account.", {
   id: idSchema,
   name: s.nullable(s.string("The account display name when returned by Acuity.")),
@@ -34,6 +35,7 @@ const accountSchema = s.object("A normalized Acuity Scheduling account.", {
   raw: s.looseObject("The raw account object returned by Acuity Scheduling."),
 });
 
+// oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
 const calendarSchema = s.object("A normalized Acuity Scheduling calendar.", {
   id: idSchema,
   name: s.string("The calendar name."),
@@ -43,6 +45,7 @@ const calendarSchema = s.object("A normalized Acuity Scheduling calendar.", {
   raw: s.looseObject("The raw calendar object returned by Acuity Scheduling."),
 });
 
+// oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
 const appointmentTypeSchema = s.object("A normalized Acuity Scheduling appointment type.", {
   id: idSchema,
   name: s.string("The appointment type name."),
@@ -53,6 +56,7 @@ const appointmentTypeSchema = s.object("A normalized Acuity Scheduling appointme
   raw: s.looseObject("The raw appointment type object returned by Acuity Scheduling."),
 });
 
+// oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
 const intakeFormSchema = s.object("A normalized Acuity Scheduling intake form.", {
   id: idSchema,
   name: s.string("The intake form name."),
@@ -64,6 +68,7 @@ const intakeFormSchema = s.object("A normalized Acuity Scheduling intake form.",
   raw: s.looseObject("The raw intake form object returned by Acuity Scheduling."),
 });
 
+// oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
 const appointmentSchema = s.object("A normalized Acuity Scheduling appointment.", {
   id: idSchema,
   firstName: s.nullable(s.string("The client first name when returned.")),
@@ -91,6 +96,7 @@ const appointmentSchema = s.object("A normalized Acuity Scheduling appointment."
   raw: s.looseObject("The raw appointment object returned by Acuity Scheduling."),
 });
 
+// oxlint-disable-next-line eslint/sort-keys -- This ordered map is spread into published input schemas.
 const availabilityBaseProperties = {
   appointmentTypeId: s.positiveInteger("The appointment type ID used to check availability."),
   calendarId: s.positiveInteger("The calendar ID used to limit availability."),
@@ -98,6 +104,7 @@ const availabilityBaseProperties = {
   timezone: s.nonEmptyString("The timezone used to return available dates and times."),
 };
 
+// oxlint-disable-next-line eslint/sort-keys -- This ordered map is spread into published input schemas.
 const appointmentWriteProperties = {
   firstName: s.nonEmptyString("The client first name."),
   lastName: s.nonEmptyString("The client last name."),
@@ -118,6 +125,7 @@ const requestControlProperties = {
 const createAppointmentInputSchema: JsonSchema = {
   ...s.object(
     "The appointment details submitted to Acuity Scheduling.",
+    // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
     {
       datetime: s.nonEmptyString("The appointment start date and time."),
       appointmentTypeId: s.positiveInteger("The numeric appointment type ID."),
@@ -154,6 +162,7 @@ const createAppointmentInputSchema: JsonSchema = {
 const updateAppointmentInputSchema: JsonSchema = {
   ...s.object(
     "The fields used to update an Acuity appointment.",
+    // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
     {
       appointmentId: s.positiveInteger("The numeric appointment ID to update."),
       ...appointmentWriteProperties,
@@ -301,6 +310,7 @@ export const acuitySchedulingActions: ActionDefinition[] = [
     requiredScopes: [],
     inputSchema: s.object(
       "The filters used to list Acuity appointments.",
+      // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
       {
         max: s.positiveInteger("The maximum number of appointments to return."),
         minDate: s.date("The earliest appointment date to return."),
@@ -382,6 +392,7 @@ export const acuitySchedulingActions: ActionDefinition[] = [
     requiredScopes: [],
     inputSchema: s.object(
       "The fields used to reschedule an Acuity appointment.",
+      // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
       {
         appointmentId: s.positiveInteger("The numeric appointment ID to reschedule."),
         datetime: s.nonEmptyString("The new appointment start date and time."),

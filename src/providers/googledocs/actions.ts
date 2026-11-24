@@ -36,6 +36,7 @@ const driveOwner = s.object(
   { additionalProperties: true, description: "Google Drive file owner." },
 );
 const driveFile = s.object(
+  // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
   {
     id: s.string({ description: "The ID of the file in Google Drive." }),
     name: s.string({ description: "The name of the file." }),
@@ -53,6 +54,7 @@ const driveFile = s.object(
   { required: ["id", "name", "mimeType"], additionalProperties: true, description: "Google Drive file metadata." },
 );
 const documentSummary = s.object(
+  // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
   {
     documentId: s.string({ description: "The ID of the Google Docs document." }),
     title: s.string({ description: "The title of the document." }),
@@ -61,6 +63,7 @@ const documentSummary = s.object(
   { required: ["documentId", "title"], additionalProperties: true, description: "Google Docs document summary." },
 );
 const documentDetail = s.object(
+  // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
   {
     documentId: s.string({ description: "The ID of the Google Docs document." }),
     title: s.string({ description: "The title of the document." }),
@@ -77,11 +80,13 @@ const documentDetail = s.object(
   },
   { required: ["documentId", "title"], additionalProperties: true, description: "Google Docs document detail." },
 );
+// oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
 const plaintextOutput = output({
   documentId: s.string({ description: "The ID of the Google Docs document." }),
   title: nullableString,
   text: s.string({ description: "The plain-text rendering of the document content." }),
 });
+// oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
 const exportPdfOutput = output({
   fileId: s.string({ description: "The ID of the exported file in Google Drive." }),
   filename: s.string({ description: "The filename used for the exported PDF." }),
@@ -89,6 +94,7 @@ const exportPdfOutput = output({
   dataBase64: s.string({ description: "The Base64-encoded binary content of the exported PDF." }),
   sizeBytes: s.integer({ description: "The size of the exported PDF in bytes." }),
 });
+// oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
 const spreadsheetChartsOutput = output({
   spreadsheetId: s.string({ description: "The ID of the Google Sheets spreadsheet." }),
   title: nullableString,
@@ -104,6 +110,7 @@ const actions: GoogledocsActionSource[] = [
     "copy_document",
     "Copy an existing Google Docs document through Google Drive.",
     input(
+      // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
       {
         document_id: str("The ID of the Google Docs document to copy."),
         title: str("The title for the copied document."),
@@ -117,12 +124,14 @@ const actions: GoogledocsActionSource[] = [
     "create_document",
     "Create a Google Docs document and optionally insert initial text at the beginning.",
     input(
+      // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
       {
         title: str("The title of the new document."),
         text: str("Initial text to insert at the beginning of the document."),
       },
       ["title"],
     ),
+    // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
     output({
       documentId: str("The ID of the Google Docs document."),
       title: str("The title of the document."),
@@ -140,6 +149,7 @@ const actions: GoogledocsActionSource[] = [
     "create_footer",
     "Create a footer in a Google Docs document.",
     input(
+      // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
       {
         document_id: str("The ID of the Google Docs document."),
         type: str("The type of footer to create."),
@@ -153,6 +163,7 @@ const actions: GoogledocsActionSource[] = [
     "create_footnote",
     "Create a footnote in a Google Docs document.",
     input(
+      // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
       {
         documentId: str("The ID of the Google Docs document."),
         location: jsonObject,
@@ -166,6 +177,7 @@ const actions: GoogledocsActionSource[] = [
     "create_header",
     "Create a header in a Google Docs document and optionally insert initial text.",
     input(
+      // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
       {
         documentId: str("The ID of the Google Docs document."),
         type: str("The type of header to create."),
@@ -180,6 +192,7 @@ const actions: GoogledocsActionSource[] = [
     "create_named_range",
     "Create a named range over a specific span in a Google Docs document.",
     input(
+      // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
       {
         documentId: str("The ID of the Google Docs document."),
         name: s.string({ minLength: 1, maxLength: 256, description: "The name of the named range." }),
@@ -195,6 +208,7 @@ const actions: GoogledocsActionSource[] = [
     "create_paragraph_bullets",
     "Add bullets to paragraphs within a specified range in a Google Docs document.",
     input(
+      // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
       {
         document_id: str("The ID of the Google Docs document."),
         createParagraphBullets: jsonObject,
@@ -245,6 +259,7 @@ const actions: GoogledocsActionSource[] = [
     "delete_named_range",
     "Delete a named range from a Google Docs document.",
     input(
+      // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
       {
         document_id: str("The ID of the Google Docs document."),
         deleteNamedRange: jsonObject,
@@ -318,6 +333,7 @@ const actions: GoogledocsActionSource[] = [
     "get_document_plaintext",
     "Retrieve a Google Docs document and render it as best-effort plain text.",
     input(
+      // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
       {
         document_id: str("The ID of the Google Docs document."),
         include_tables: bool("Whether to include table content."),
@@ -336,6 +352,7 @@ const actions: GoogledocsActionSource[] = [
     "insert_inline_image",
     "Insert an inline image from a URI at a specified location.",
     input(
+      // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
       {
         documentId: str("The ID of the Google Docs document."),
         uri: s.url("The publicly accessible URI of the image to insert."),
@@ -362,6 +379,7 @@ const actions: GoogledocsActionSource[] = [
     "insert_table_action",
     "Insert a table at a specific index or at the end of a segment.",
     input(
+      // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
       {
         documentId: str("The ID of the Google Docs document."),
         rows: s.integer({ exclusiveMinimum: 0, description: "The number of rows in the table to insert." }),
@@ -391,6 +409,7 @@ const actions: GoogledocsActionSource[] = [
     "insert_text_action",
     "Insert text at a specific index or append it to the end.",
     input(
+      // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
       {
         document_id: str("The ID of the Google Docs document."),
         text_to_insert: str("The text to insert."),
@@ -417,6 +436,7 @@ const actions: GoogledocsActionSource[] = [
     "replace_all_text",
     "Replace all matching text in a Google Docs document.",
     input(
+      // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
       {
         document_id: str("The ID of the Google Docs document."),
         find_text: str("The text or pattern to search for."),
@@ -444,6 +464,7 @@ const actions: GoogledocsActionSource[] = [
   read(
     "search_documents",
     "Search Google Docs files with Google Drive filters.",
+    // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
     input({
       query: str("A Google Drive query string or full-text search string."),
       order_by: str("A comma-separated list of fields to sort results by."),

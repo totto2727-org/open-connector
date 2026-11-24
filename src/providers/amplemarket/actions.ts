@@ -16,6 +16,7 @@ const linkSchema = s.object("Amplemarket pagination or resource link.", {
   href: s.string("Relative URL for the related resource or page."),
 });
 const linksSchema = s.looseObject(
+  // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
   {
     self: linkSchema,
     prev: linkSchema,
@@ -28,6 +29,7 @@ const accountDetailsSchema = s.object("Amplemarket account details.", {
   name: s.string("Amplemarket account name."),
 });
 const phoneNumberSchema = s.looseObject(
+  // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
   {
     object: s.string("Object type returned by Amplemarket."),
     id: s.string("Phone number ID."),
@@ -40,6 +42,7 @@ const phoneNumberSchema = s.looseObject(
   { description: "Phone number attached to an Amplemarket contact." },
 );
 const contactActivitySchema = s.looseObject(
+  // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
   {
     event_at: s.string("Activity timestamp in ISO 8601 format."),
     event_type: s.string("Activity event type."),
@@ -52,6 +55,7 @@ const contactActivitySchema = s.looseObject(
   { description: "Recent activity returned for an Amplemarket contact." },
 );
 const contactSchema = s.looseObject(
+  // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
   {
     id: s.string("Amplemarket contact ID."),
     name: s.nullable(s.string("Full name of the contact.")),
@@ -72,6 +76,7 @@ const contactSchema = s.looseObject(
   { description: "Amplemarket contact record." },
 );
 const leadListSchema = s.looseObject(
+  // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
   {
     id: s.string("Amplemarket lead list ID."),
     name: s.string("Lead list name."),
@@ -87,6 +92,7 @@ const leadListSchema = s.looseObject(
   { description: "Amplemarket lead list record." },
 );
 const taskSchema = s.looseObject(
+  // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
   {
     id: s.string("Amplemarket task ID."),
     type: s.string("Task type."),
@@ -114,6 +120,7 @@ const listContactsInputSchema = s.object("Query parameters for retrieving Amplem
 });
 const listLeadListsInputSchema = s.object(
   "Query parameters for listing Amplemarket lead lists.",
+  // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
   {
     page_size: pageSizeField,
     page_after: cursorField,
@@ -129,6 +136,7 @@ const leadListIdInputSchema = s.object("Path parameters for retrieving an Amplem
 });
 const listTasksInputSchema = s.object(
   "Query parameters for listing Amplemarket tasks.",
+  // oxlint-disable-next-line eslint/sort-keys -- Preserve the published schema field order.
   {
     page_size: pageSizeField,
     page_after: cursorField,

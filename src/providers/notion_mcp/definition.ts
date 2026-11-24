@@ -6,6 +6,7 @@ import { notionMcpEndpoint, notionMcpIssuer } from "./endpoints.ts";
 const service = "notion_mcp";
 
 /** Notion provider backed by Notion's official remote MCP server; no Notion integration app is registered. */
+// oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
 export const provider: ProviderDefinition = {
   service,
   displayName: "Notion MCP",
@@ -14,6 +15,7 @@ export const provider: ProviderDefinition = {
   categories: ["Productivity"],
   authTypes: ["oauth2"],
   auth: [
+    // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
     {
       type: "oauth2",
       authorizationUrl: `${notionMcpIssuer}/authorize`,

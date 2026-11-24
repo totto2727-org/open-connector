@@ -4,6 +4,7 @@ import { weixinBotActions } from "./actions.ts";
 
 export const nodeOnly = true;
 
+// oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
 export const provider: ProviderDefinition = {
   service: "weixin_bot",
   displayName: "Weixin Bot",
@@ -12,9 +13,11 @@ export const provider: ProviderDefinition = {
   categories: ["Communication"],
   authTypes: ["custom_credential"],
   auth: [
+    // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
     {
       type: "custom_credential",
       fields: [
+        // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
         {
           key: "botToken",
           label: "Bot Token",
@@ -25,6 +28,7 @@ export const provider: ProviderDefinition = {
           description:
             "The secret bot token returned after QR pairing. Run `node examples/weixin-bot-login.ts` locally to obtain it, and do not share it.",
         },
+        // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
         {
           key: "accountId",
           label: "Bot Account ID",

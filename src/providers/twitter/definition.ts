@@ -25,12 +25,14 @@ const twitterOAuthScopes = [
   "space.read",
 ];
 
+// oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
 export const provider: ProviderDefinition = {
   service,
   displayName: "X (Twitter)",
   categories: ["Social", "Marketing"],
   authTypes: ["oauth2", "custom_credential"],
   auth: [
+    // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
     {
       type: "oauth2",
       authorizationUrl: "https://x.com/i/oauth2/authorize",
@@ -41,6 +43,7 @@ export const provider: ProviderDefinition = {
         method: "S256",
       },
       clientConfigFields: [
+        // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
         {
           key: "appBearerToken",
           label: "App Bearer Token",
@@ -53,9 +56,11 @@ export const provider: ProviderDefinition = {
         },
       ],
     },
+    // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
     {
       type: "custom_credential",
       fields: [
+        // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
         {
           key: "userAccessToken",
           label: "User Access Token",
@@ -66,6 +71,7 @@ export const provider: ProviderDefinition = {
           description:
             "X OAuth 2.0 user access token sent with the Authorization Bearer header. The token must include the action's required X user scopes.",
         },
+        // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
         {
           key: "appBearerToken",
           label: "App Bearer Token",

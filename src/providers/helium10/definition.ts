@@ -2,12 +2,14 @@ import type { ProviderDefinition } from "../../core/types.ts";
 
 import { helium10Actions, helium10ProviderScopes } from "./actions.ts";
 
+// oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
 export const provider: ProviderDefinition = {
   service: "helium10",
   displayName: "Helium 10",
   categories: ["Data", "Marketing"],
   authTypes: ["oauth2"],
   auth: [
+    // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
     {
       type: "oauth2",
       authorizationUrl: "https://members.helium10.com/authhub/api/scenarios/mcp/oauth2/authorize",

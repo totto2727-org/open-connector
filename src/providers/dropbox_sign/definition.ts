@@ -7,12 +7,14 @@ const dropboxSignAuthorizationUrl = "https://app.hellosign.com/oauth/authorize";
 const dropboxSignTokenUrl = "https://app.hellosign.com/oauth/token";
 const dropboxSignRefreshTokenUrl = "https://app.hellosign.com/oauth/token?refresh";
 
+// oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
 export const provider: ProviderDefinition = {
   service,
   displayName: "Dropbox Sign",
   categories: ["Productivity"],
   authTypes: ["oauth2", "api_key"],
   auth: [
+    // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
     {
       type: "oauth2",
       authorizationUrl: dropboxSignAuthorizationUrl,
@@ -29,6 +31,7 @@ export const provider: ProviderDefinition = {
         scope: false,
       },
     },
+    // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
     {
       type: "api_key",
       label: "API Key",

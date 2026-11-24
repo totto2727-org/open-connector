@@ -5,12 +5,14 @@ import { influxdbCloudAllowedApiBaseUrls } from "./regions.ts";
 
 const service = "influxdb_cloud";
 
+// oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
 export const provider: ProviderDefinition = {
   service,
   displayName: "InfluxDB Cloud",
   categories: ["Data", "Developer Tools"],
   authTypes: ["api_key"],
   auth: [
+    // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
     {
       type: "api_key",
       label: "API Token",
@@ -18,6 +20,7 @@ export const provider: ProviderDefinition = {
       description:
         "InfluxDB Cloud API token sent with the Token authorization scheme. Create it from Load Data > API Tokens in the InfluxDB UI: https://docs.influxdata.com/influxdb3/cloud-serverless/admin/tokens/create-token/",
       extraFields: [
+        // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
         {
           key: "apiBaseUrl",
           label: "API Base URL",

@@ -6,18 +6,21 @@ const service = "adobe_commerce";
 
 export const adobeCommerceCredentialHelpUrl = "https://developer.adobe.com/commerce/webapi/get-started/authentication/";
 
+// oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
 export const provider: ProviderDefinition = {
   service,
   displayName: "Adobe Commerce",
   categories: ["Productivity", "Marketing"],
   authTypes: ["api_key"],
   auth: [
+    // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
     {
       type: "api_key",
       label: "Admin Access Token",
       placeholder: "Adobe Commerce bearer token",
       description: `Adobe Commerce Admin access token sent as an Authorization Bearer token. Learn about Adobe Commerce API authentication at ${adobeCommerceCredentialHelpUrl}`,
       extraFields: [
+        // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
         {
           key: "baseUrl",
           label: "Store Base URL",
@@ -27,6 +30,7 @@ export const provider: ProviderDefinition = {
           placeholder: "https://shop.example.com",
           description: "Public HTTPS root URL for your Adobe Commerce store. Do not include the /rest/V1 path.",
         },
+        // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
         {
           key: "storeCode",
           label: "Store Code",

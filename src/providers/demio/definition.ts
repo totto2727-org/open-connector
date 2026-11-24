@@ -4,18 +4,21 @@ import { demioActions } from "./actions.ts";
 
 const credentialHelpUrl = "https://help.demio.com/en/articles/3527489-zapier-setup";
 
+// oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
 export const provider: ProviderDefinition = {
   service: "demio",
   displayName: "Demio",
   categories: ["Marketing", "Communication"],
   authTypes: ["api_key"],
   auth: [
+    // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
     {
       type: "api_key",
       label: "API Key",
       placeholder: "DEMIO_API_KEY",
       description: `Demio API Key sent with the Api-Key header. Account owners can copy it from Settings > API: ${credentialHelpUrl}.`,
       extraFields: [
+        // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
         {
           key: "apiSecret",
           label: "API Secret",

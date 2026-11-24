@@ -6,18 +6,21 @@ const service = "kommo";
 const kommoCredentialHelpUrl = "https://developers.kommo.com/docs/long-lived-token";
 const kommoPrivateIntegrationHelpUrl = "https://developers.kommo.com/docs/private-integration";
 
+// oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
 export const provider: ProviderDefinition = {
   service,
   displayName: "Kommo",
   categories: ["Marketing", "Productivity"],
   authTypes: ["api_key"],
   auth: [
+    // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
     {
       type: "api_key",
       label: "Long-lived Token",
       placeholder: "KOMMO_LONG_LIVED_TOKEN",
       description: `Kommo long-lived token used as a Bearer token for a private integration. Create a private integration and generate the token from its Keys and scopes tab: ${kommoCredentialHelpUrl}.`,
       extraFields: [
+        // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
         {
           key: "subdomain",
           label: "Subdomain",

@@ -11,12 +11,14 @@ const defaultGitlabInstanceUrl = "https://gitlab.com";
 /**
  * GitLab provider backed by the GitLab REST API.
  */
+// oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
 export const provider: ProviderDefinition = {
   service,
   displayName: "GitLab",
   categories: ["Developer Tools"],
   authTypes: ["oauth2", "api_key"],
   auth: [
+    // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
     {
       type: "oauth2",
       authorizationUrl: "{+instanceUrl}/oauth/authorize",
@@ -27,6 +29,7 @@ export const provider: ProviderDefinition = {
         method: "S256",
       },
       clientConfigFields: [
+        // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
         {
           key: "instanceUrl",
           label: "GitLab instance URL",
@@ -39,6 +42,7 @@ export const provider: ProviderDefinition = {
         },
       ],
     },
+    // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
     {
       type: "api_key",
       label: "Personal access token",
@@ -46,6 +50,7 @@ export const provider: ProviderDefinition = {
       description:
         "GitLab personal access token sent with the Authorization Bearer header. Create one in GitLab user preferences under Access tokens.",
       extraFields: [
+        // oxlint-disable-next-line eslint/sort-keys -- This metadata object retains its serialized catalog order.
         {
           key: "baseUrl",
           label: "Instance URL",
