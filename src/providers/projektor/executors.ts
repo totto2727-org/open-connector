@@ -18,27 +18,41 @@ import {
 const service = "projektor";
 const resolveBaseUrl = credentialProviderProxyBaseUrl("apiBaseUrl", "baseUrl");
 const isApiEndpoint = providerProxyEndpointPrefixes("/api");
+const projektorCredentialResponseMaxBytes = 1_048_576;
+
+const normalizeBackendUrl = (value: unknown): string => {
+  const url = assertPublicHttpUrl(requiredInputString(value, "baseUrl"), {
+    allowPrivateNetwork: isPrivateNetworkAccessAllowed(),
+    createError: providerInputError,
+    fieldName: "baseUrl",
+  });
+  if (url.username || url.password || url.search || url.hash) {
+    throw providerInputError("baseUrl must not include credentials, a query, or a fragment");
+  }
+  url.pathname = url.pathname.replace(/\/+$/u, "").replace(/\/api$/u, "");
+  return url.toString().replace(/\/$/u, "");
+};
 
 export const executors: ProviderExecutors = {};
 
 export const proxy: ProviderProxyExecutor = defineProviderProxy({
-  service,
-  baseUrl: async (context) => normalizeBackendUrl(await resolveBaseUrl(context, service)),
-  auth: { type: "api_key_authorization", prefix: "Bearer " },
-  allowedEndpoint: (endpoint) => isApiEndpoint(endpoint) || endpoint === "/auth/me",
   allowPrivateNetwork: isPrivateNetworkAccessAllowed,
+  allowedEndpoint: (endpoint) => isApiEndpoint(endpoint) || endpoint === "/auth/me",
+  auth: { prefix: "Bearer ", type: "api_key_authorization" },
+  baseUrl: async (context) => normalizeBackendUrl(await resolveBaseUrl(context, service)),
   redirect: "manual",
+  service,
 });
 
 export const credentialValidators: CredentialValidators = {
   async apiKey(input, { fetcher, signal }) {
     const apiBaseUrl = normalizeBackendUrl(input.values.baseUrl);
-    const guardedFetcher = createProviderFetch({ fetch: fetcher, allowPrivateNetwork: isPrivateNetworkAccessAllowed });
+    const guardedFetcher = createProviderFetch({ allowPrivateNetwork: isPrivateNetworkAccessAllowed, fetch: fetcher });
     const payload = await runProviderRequest(
-      { signal, label: "Projektor credential validation" },
+      { label: "Projektor credential validation", signal },
       async (requestSignal) => {
         const response = await guardedFetcher(`${apiBaseUrl}/auth/me`, {
-          headers: { authorization: `Bearer ${input.apiKey}`, accept: "application/json" },
+          headers: { accept: "application/json", authorization: `Bearer ${input.apiKey}` },
           redirect: "manual",
           signal: requestSignal,
         });
@@ -46,14 +60,14 @@ export const credentialValidators: CredentialValidators = {
           throw new ProviderRequestError(response.status, "Projektor credential validation failed");
         }
         return readProviderJsonBody(response, {
-          emptyBody: null,
+          emptyBody: undefined,
           invalidJsonMessage: "Projektor credential validation returned invalid JSON",
-          maxBytes: 1024 * 1024,
+          maxBytes: projektorCredentialResponseMaxBytes,
         });
       },
     );
     const user = optionalRecord(optionalRecord(payload)?.user);
-    const userId = optionalString(user?.id);
+    const userId = optionalString(user?.id) ?? "";
     if (!userId) {
       throw providerResponseError("Projektor credential validation returned an invalid user identity");
     }
@@ -63,16 +77,3 @@ export const credentialValidators: CredentialValidators = {
     };
   },
 };
-
-function normalizeBackendUrl(value: unknown): string {
-  const url = assertPublicHttpUrl(requiredInputString(value, "baseUrl"), {
-    fieldName: "baseUrl",
-    createError: providerInputError,
-    allowPrivateNetwork: isPrivateNetworkAccessAllowed(),
-  });
-  if (url.username || url.password || url.search || url.hash) {
-    throw providerInputError("baseUrl must not include credentials, a query, or a fragment");
-  }
-  url.pathname = url.pathname.replace(/\/+$/u, "").replace(/\/api$/u, "");
-  return url.toString().replace(/\/$/u, "");
-}

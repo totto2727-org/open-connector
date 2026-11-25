@@ -1,6 +1,6 @@
 import type { ExecutionContext, ResolvedCredential } from "../../core/types.ts";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { provider } from "./definition.ts";
 import { credentialValidators, executors, proxy } from "./executors.ts";
 
@@ -20,20 +20,23 @@ function credential(apiKey = "monid_saved_key"): Extract<ResolvedCredential, { a
 }
 
 function executionContext(savedCredential: ResolvedCredential | undefined = credential()): ExecutionContext {
-  return { getCredential: async () => savedCredential };
+  return { getCredential: vi.fn<ExecutionContext["getCredential"]>().mockResolvedValue(savedCredential) };
 }
 
 function noCredentialExecutionContext(): ExecutionContext {
-  return { getCredential: async () => undefined };
+  return { getCredential: vi.fn<ExecutionContext["getCredential"]>().mockResolvedValue(undefined) };
 }
 
 function apiKeyValidationInput(apiKey: string): { apiKey: string; values: Record<string, string> } {
   return { apiKey, values: { apiKey } };
 }
 
-function fetchStub(response: Response): { fetcher: ReturnType<typeof vi.fn>; requests: CapturedRequest[] } {
+function fetchStub(response: Response): {
+  fetcher: ReturnType<typeof vi.fn<typeof fetch>>;
+  requests: CapturedRequest[];
+} {
   const requests: CapturedRequest[] = [];
-  const fetcher = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+  const fetcher = vi.fn<typeof fetch>(async (url, init) => {
     requests.push({ url: String(url), init });
     return response.clone();
   });
@@ -43,18 +46,18 @@ function fetchStub(response: Response): { fetcher: ReturnType<typeof vi.fn>; req
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe("Monid provider definition", () => {
-  it("advertises only API-key proxy access and no actions or extra credential fields", () => {
-    expect(provider.authTypes).toEqual(["api_key"]);
+describe("monid provider definition", () => {
+  test("advertises only API-key proxy access and no actions or extra credential fields", () => {
+    expect(provider.authTypes).toStrictEqual(["api_key"]);
     expect(provider.auth[0]).toMatchObject({ type: "api_key" });
     expect(provider.auth[0]).not.toHaveProperty("extraFields");
-    expect(provider.actions).toEqual([]);
-    expect(executors).toEqual({});
+    expect(provider.actions).toStrictEqual([]);
+    expect(executors).toStrictEqual({});
   });
 });
 
-describe("Monid provider proxy", () => {
-  it("forwards documented discovery, inspection, and synchronous run JSON requests", async () => {
+describe("monid provider proxy", () => {
+  test("forwards documented discovery, inspection, and synchronous run JSON requests", async () => {
     const { fetcher, requests } = fetchStub(
       Response.json({ result: "complete" }, { headers: { "x-request-id": "req-1" } }),
     );
@@ -74,12 +77,12 @@ describe("Monid provider proxy", () => {
       });
     }
 
-    expect(requests.map((request) => request.url)).toEqual([
+    expect(requests.map((request) => request.url)).toStrictEqual([
       "https://api.monid.ai/v1/discover",
       "https://api.monid.ai/v1/inspect",
       "https://api.monid.ai/v1/run",
     ]);
-    expect(requests.map((request) => JSON.parse(String(request.init?.body)))).toEqual([
+    expect(requests.map((request) => JSON.parse(String(request.init?.body)))).toStrictEqual([
       { query: "twitter posts", limit: 5 },
       { provider: "apify", endpoint: "/apidojo/tweet-scraper" },
       { provider: "apify", endpoint: "/apidojo/tweet-scraper", input: { searchTerms: ["AI"], maxItems: 10 } },
@@ -92,7 +95,7 @@ describe("Monid provider proxy", () => {
     expect(fetcher).toHaveBeenCalledTimes(3);
   });
 
-  it("preserves accepted asynchronous run output status and headers", async () => {
+  test("preserves accepted asynchronous run output status and headers", async () => {
     const { requests } = fetchStub(
       Response.json(
         { runId: "run-123", status: "READY", provider: "apify", endpoint: "/apidojo/tweet-scraper" },
@@ -105,7 +108,7 @@ describe("Monid provider proxy", () => {
         { method: "POST", endpoint: "/v1/run", body: { provider: "apify", endpoint: "/apidojo/tweet-scraper" } },
         executionContext(),
       ),
-    ).resolves.toEqual({
+    ).resolves.toStrictEqual({
       ok: true,
       response: {
         status: 202,
@@ -113,13 +116,13 @@ describe("Monid provider proxy", () => {
         data: { runId: "run-123", status: "READY", provider: "apify", endpoint: "/apidojo/tweet-scraper" },
       },
     });
-    expect(JSON.parse(String(requests[0]?.init?.body))).toEqual({
+    expect(JSON.parse(String(requests[0]?.init?.body))).toStrictEqual({
       provider: "apify",
       endpoint: "/apidojo/tweet-scraper",
     });
   });
 
-  it("forwards documented non-run POST and GET paths with their methods", async () => {
+  test("forwards documented non-run POST and GET paths with their methods", async () => {
     const { requests } = fetchStub(Response.json({ ok: true }));
 
     const requestsToForward = [
@@ -135,7 +138,7 @@ describe("Monid provider proxy", () => {
       await proxy(request, executionContext());
     }
 
-    expect(requests.map((request) => request.url)).toEqual([
+    expect(requests.map((request) => request.url)).toStrictEqual([
       "https://api.monid.ai/v1/auth/whoami",
       "https://api.monid.ai/v1/auth/workspaces",
       "https://api.monid.ai/v1/runs",
@@ -144,10 +147,18 @@ describe("Monid provider proxy", () => {
       "https://api.monid.ai/v1/wallet/balance",
       "https://api.monid.ai/v1/wallet/activities?cursor=a%2Fb&limit=10",
     ]);
-    expect(requests.map((request) => request.init?.method)).toEqual(["GET", "GET", "GET", "GET", "POST", "GET", "GET"]);
+    expect(requests.map((request) => request.init?.method)).toStrictEqual([
+      "GET",
+      "GET",
+      "GET",
+      "GET",
+      "POST",
+      "GET",
+      "GET",
+    ]);
   });
 
-  it("overwrites caller-supplied authorization with the saved API key", async () => {
+  test("overwrites caller-supplied authorization with the saved API key", async () => {
     const { requests } = fetchStub(Response.json({ ok: true }));
 
     await proxy(
@@ -164,7 +175,7 @@ describe("Monid provider proxy", () => {
     expect(headers.get("x-client")).toBe("test");
   });
 
-  it("rejects unsupported origins and paths outside the v1 API before egress", async () => {
+  test("rejects unsupported origins and paths outside the v1 API before egress", async () => {
     const { fetcher } = fetchStub(Response.json({ ok: true }));
 
     await expect(
@@ -180,7 +191,7 @@ describe("Monid provider proxy", () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 
-  it("requires a saved API-key credential", async () => {
+  test("requires a saved API-key credential", async () => {
     const { fetcher } = fetchStub(Response.json({ ok: true }));
 
     await expect(
@@ -192,7 +203,7 @@ describe("Monid provider proxy", () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 
-  it("normalizes a Monid non-success response into a proxy failure result", async () => {
+  test("normalizes a Monid non-success response into a proxy failure result", async () => {
     fetchStub(
       new Response("Monid operation cannot be stopped", { status: 409, headers: { "x-request-id": "req-failed" } }),
     );
@@ -206,9 +217,9 @@ describe("Monid provider proxy", () => {
   });
 });
 
-describe("Monid credential validation", () => {
-  it("uses the injected fetcher and returns a safe workspace profile", async () => {
-    const fetcher = vi.fn(async () =>
+describe("monid credential validation", () => {
+  test("uses the injected fetcher and returns a safe workspace profile", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
       Response.json({
         user: { userId: "user-1", username: "alice" },
         workspace: { workspaceId: "workspace-1", name: "Production workspace" },
@@ -217,7 +228,7 @@ describe("Monid credential validation", () => {
 
     await expect(
       credentialValidators.apiKey!(apiKeyValidationInput("monid_validation_key"), { fetcher }),
-    ).resolves.toEqual({
+    ).resolves.toStrictEqual({
       profile: { accountId: "workspace-1", displayName: "Production workspace" },
     });
     expect(fetcher).toHaveBeenCalledWith(
@@ -226,17 +237,19 @@ describe("Monid credential validation", () => {
     );
   });
 
-  it("falls back to the stable user ID when username is empty", async () => {
-    const fetcher = vi.fn(async () => Response.json({ user: { userId: "user-1", username: "" }, workspace: {} }));
+  test("falls back to the stable user ID when username is empty", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json({ user: { userId: "user-1", username: "" }, workspace: {} }));
 
-    await expect(credentialValidators.apiKey!(apiKeyValidationInput("key"), { fetcher })).resolves.toEqual({
+    await expect(credentialValidators.apiKey!(apiKeyValidationInput("key"), { fetcher })).resolves.toStrictEqual({
       profile: { accountId: "user-1", displayName: "user-1" },
     });
   });
 
-  it("does not expose API keys or provider error payloads on credential failure", async () => {
+  test("does not expose API keys or provider error payloads on credential failure", async () => {
     const apiKey = "monid_secret_should_not_leak";
-    const fetcher = vi.fn(async () => new Response(`invalid key ${apiKey}`, { status: 401 }));
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(`invalid key ${apiKey}`, { status: 401 }));
 
     await expect(credentialValidators.apiKey!(apiKeyValidationInput(apiKey), { fetcher })).rejects.toMatchObject({
       status: 401,
@@ -244,9 +257,9 @@ describe("Monid credential validation", () => {
     });
   });
 
-  it("rejects malformed or identity-less successful responses", async () => {
-    const malformedFetcher = vi.fn(async () => new Response("not json", { status: 200 }));
-    const identityLessFetcher = vi.fn(async () => Response.json({ user: { username: "alice" } }));
+  test("rejects malformed or identity-less successful responses", async () => {
+    const malformedFetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response("not json", { status: 200 }));
+    const identityLessFetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ user: { username: "alice" } }));
 
     await expect(
       credentialValidators.apiKey!(apiKeyValidationInput("key"), { fetcher: malformedFetcher }),
@@ -256,16 +269,16 @@ describe("Monid credential validation", () => {
     ).rejects.toThrow("Monid credential validation returned an invalid user identity");
   });
 
-  it("rejects a whoami response over the one MiB credential-validation limit", async () => {
-    const fetcher = vi.fn(async () => new Response("x".repeat(1024 * 1024 + 1)));
+  test("rejects a whoami response over the one MiB credential-validation limit", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response("x".repeat(1024 * 1024 + 1)));
 
     await expect(credentialValidators.apiKey!(apiKeyValidationInput("key"), { fetcher })).rejects.toThrow(
       "Monid credential validation response exceeds 1048576 bytes",
     );
   });
 
-  it("forwards an aborted caller signal to whoami validation", async () => {
-    const fetcher = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+  test("forwards an aborted caller signal to whoami validation", async () => {
+    const fetcher = vi.fn<typeof fetch>(async (_url: RequestInfo | URL, init?: RequestInit) => {
       init?.signal?.throwIfAborted();
       return Response.json({ user: { userId: "user-1" } });
     });

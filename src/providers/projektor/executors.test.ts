@@ -1,6 +1,6 @@
 import type { ExecutionContext, ResolvedCredential } from "../../core/types.ts";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { setPrivateNetworkAccessAllowed } from "../../core/request.ts";
 import { provider } from "./definition.ts";
 import { credentialValidators, executors, proxy } from "./executors.ts";
@@ -15,35 +15,35 @@ function context(baseUrl = backend, metadata: Record<string, unknown> = {}): Exe
     profile: { accountId: "user-1", displayName: "Alice", grantedScopes: [] },
     metadata,
   };
-  return { getCredential: async () => credential };
+  return { getCredential: vi.fn<ExecutionContext["getCredential"]>().mockResolvedValue(credential) };
 }
 
-afterEach(() => {
-  vi.unstubAllGlobals();
-  setPrivateNetworkAccessAllowed(false);
-});
+describe("projektor provider", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    setPrivateNetworkAccessAllowed(false);
+  });
 
-describe("Projektor provider", () => {
-  it("requires a backend URL and token and advertises proxy-only access", () => {
-    expect(provider.authTypes).toEqual(["api_key"]);
+  test("requires a backend URL and token and advertises proxy-only access", () => {
+    expect(provider.authTypes).toStrictEqual(["api_key"]);
     expect(provider.auth[0]).toMatchObject({
       type: "api_key",
       label: "API Token",
       extraFields: [{ key: "baseUrl", required: true, secret: false }],
     });
-    expect(provider.actions).toEqual([]);
-    expect(executors).toEqual({});
+    expect(provider.actions).toStrictEqual([]);
+    expect(executors).toStrictEqual({});
   });
 
-  it.each([backend, `${backend}/`, `${backend}/api`, `${backend}/api/`])(
+  test.each([backend, `${backend}/`, `${backend}/api`, `${backend}/api/`])(
     "validates %s through the backend identity endpoint",
     async (baseUrl) => {
-      const fetcher = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) =>
-        Response.json({ user: { id: "user-1", name: "Alice", email: "private@example.com" } }),
-      );
+      const fetcher = vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(Response.json({ user: { id: "user-1", name: "Alice", email: "private@example.com" } }));
       await expect(
         credentialValidators.apiKey!({ apiKey: "saved-token", values: { baseUrl } }, { fetcher }),
-      ).resolves.toEqual({
+      ).resolves.toStrictEqual({
         profile: { accountId: `${backend}:user-1`, displayName: "Alice" },
         metadata: { apiBaseUrl: backend },
       });
@@ -53,8 +53,8 @@ describe("Projektor provider", () => {
     },
   );
 
-  it("forwards API methods, bodies, query parameters, and workspace selection with stored authentication", async () => {
-    const fetcher = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) => Response.json({ id: "issue-1" }));
+  test("forwards API methods, bodies, query parameters, and workspace selection with stored authentication", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ id: "issue-1" }));
     vi.stubGlobal("fetch", fetcher);
     await expect(
       proxy(
@@ -79,10 +79,8 @@ describe("Projektor provider", () => {
     expect(new Headers(init?.headers).get("x-workspace-slug")).toBe("workspace-a");
   });
 
-  it("uses validated connection metadata and preserves a backend mount path", async () => {
-    const fetcher = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) =>
-      Response.json({ user: { id: "user-1" } }),
-    );
+  test("uses validated connection metadata and preserves a backend mount path", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ user: { id: "user-1" } }));
     vi.stubGlobal("fetch", fetcher);
     await expect(
       proxy(
@@ -95,7 +93,7 @@ describe("Projektor provider", () => {
     expect(String(fetcher.mock.calls[0]?.[0])).toBe(`${backend}/backend/auth/me`);
   });
 
-  it.each([
+  test.each([
     "/oauth/token",
     "/auth/tokens",
     "/api-other",
@@ -103,7 +101,7 @@ describe("Projektor provider", () => {
     "https://attacker.example.com/api/issues",
     "//attacker.example.com/api/issues",
   ])("rejects unsupported endpoint %s before egress", async (endpoint) => {
-    const fetcher = vi.fn();
+    const fetcher = vi.fn<typeof fetch>();
     vi.stubGlobal("fetch", fetcher);
     await expect(proxy({ endpoint, method: "GET" }, context())).resolves.toMatchObject({
       ok: false,
@@ -112,7 +110,7 @@ describe("Projektor provider", () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 
-  it.each([
+  test.each([
     "",
     "file:///etc/passwd",
     "http://127.0.0.1",
@@ -121,15 +119,15 @@ describe("Projektor provider", () => {
     `${backend}?token=secret`,
     `${backend}#fragment`,
   ])("rejects unsafe backend URL %s before credential validation", async (baseUrl) => {
-    const fetcher = vi.fn();
+    const fetcher = vi.fn<typeof fetch>();
     await expect(
       credentialValidators.apiKey!({ apiKey: "saved-token", values: { baseUrl } }, { fetcher }),
     ).rejects.toMatchObject({ status: 400 });
     expect(fetcher).not.toHaveBeenCalled();
   });
 
-  it("allows private backends only with the deployment opt-in", async () => {
-    const fetcher = vi.fn(async () => Response.json({ user: { id: "user-1" } }));
+  test("allows private backends only with the deployment opt-in", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ user: { id: "user-1" } }));
     const input = { apiKey: "saved-token", values: { baseUrl: "http://10.0.0.5" } };
     setPrivateNetworkAccessAllowed(false);
     await expect(credentialValidators.apiKey!(input, { fetcher })).rejects.toMatchObject({ status: 400 });
@@ -140,39 +138,47 @@ describe("Projektor provider", () => {
     });
   });
 
-  it.each([401, 403, 302, 500])(
-    "rejects credential HTTP %s without exposing token-bearing error bodies",
-    async (status) => {
-      const fetcher = vi.fn(
-        async () => new Response("invalid saved-token", { status, headers: { location: "https://login.example.com" } }),
-      );
+  describe("credential response validation", () => {
+    test.each([401, 403, 302, 500])(
+      "rejects credential HTTP %s without exposing token-bearing error bodies",
+      async (status) => {
+        const fetcher = vi
+          .fn<typeof fetch>()
+          .mockResolvedValue(
+            new Response("invalid saved-token", { status, headers: { location: "https://login.example.com" } }),
+          );
+        await expect(
+          credentialValidators.apiKey!({ apiKey: "saved-token", values: { baseUrl: backend } }, { fetcher }),
+        ).rejects.toMatchObject({
+          status,
+          message: "Projektor credential validation failed",
+        });
+        expect(fetcher).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    test.each([
+      Response.json({ user: { name: "Alice" } }),
+      Response.json(null),
+      new Response(),
+      new Response("<html>Login</html>"),
+      new Response("x".repeat(1024 * 1024 + 1)),
+    ])("rejects malformed, identity-less, or oversized validation responses", async (response) => {
+      const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(response.clone());
       await expect(
         credentialValidators.apiKey!({ apiKey: "saved-token", values: { baseUrl: backend } }, { fetcher }),
-      ).rejects.toMatchObject({
-        status,
-        message: "Projektor credential validation failed",
-      });
-      expect(fetcher).toHaveBeenCalledTimes(1);
-    },
-  );
-
-  it.each([
-    Response.json({ user: { name: "Alice" } }),
-    Response.json(null),
-    new Response("<html>Login</html>"),
-    new Response("x".repeat(1024 * 1024 + 1)),
-  ])("rejects malformed, identity-less, or oversized validation responses", async (response) => {
-    const fetcher = vi.fn(async () => response.clone());
-    await expect(
-      credentialValidators.apiKey!({ apiKey: "saved-token", values: { baseUrl: backend } }, { fetcher }),
-    ).rejects.toBeInstanceOf(Error);
+      ).rejects.toBeInstanceOf(Error);
+    });
   });
 
-  it("requires a configured credential before proxy egress", async () => {
-    const fetcher = vi.fn();
+  test("requires a configured credential before proxy egress", async () => {
+    const fetcher = vi.fn<typeof fetch>();
     vi.stubGlobal("fetch", fetcher);
     await expect(
-      proxy({ endpoint: "/api/workspaces", method: "GET" }, { getCredential: async () => undefined }),
+      proxy(
+        { endpoint: "/api/workspaces", method: "GET" },
+        { getCredential: vi.fn<ExecutionContext["getCredential"]>().mockResolvedValue(undefined) },
+      ),
     ).resolves.toMatchObject({
       ok: false,
       error: { code: "authorization_failed" },

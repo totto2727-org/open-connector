@@ -18,52 +18,11 @@ import {
 const service = "monid";
 const monidApiBaseUrl = "https://api.monid.ai";
 const monidWhoamiUrl = `${monidApiBaseUrl}/v1/auth/whoami`;
-const monidCredentialResponseMaxBytes = 1024 * 1024;
+const monidCredentialResponseMaxBytes = 1_048_576;
 
-export const executors: ProviderExecutors = {};
-
-export const proxy: ProviderProxyExecutor = defineProviderProxy({
-  service,
-  baseUrl: monidApiBaseUrl,
-  auth: { type: "api_key_authorization", prefix: "Bearer " },
-  allowedEndpoint: providerProxyEndpointPrefixes("/v1"),
-  skipDnsValidation: true,
-  timeoutMs: 120_000,
-});
-
-export const credentialValidators: CredentialValidators = {
-  async apiKey(input, { fetcher, signal }) {
-    const payload = await runProviderRequest(
-      { signal, label: "Monid credential validation" },
-      async (requestSignal) => {
-        const response = await fetcher(monidWhoamiUrl, {
-          headers: { authorization: `Bearer ${input.apiKey}` },
-          signal: requestSignal,
-        });
-        if (!response.ok) {
-          throw new ProviderRequestError(response.status, "Monid credential validation failed");
-        }
-
-        const bytes = await readBoundedResponseBytes(response, {
-          maxBytes: monidCredentialResponseMaxBytes,
-          fieldName: "Monid credential validation response",
-          createError: providerResponseError,
-        });
-        try {
-          return JSON.parse(new TextDecoder().decode(bytes)) as unknown;
-        } catch {
-          throw providerResponseError("Monid credential validation returned an invalid response");
-        }
-      },
-    );
-
-    return { profile: monidCredentialProfile(payload) };
-  },
-};
-
-function monidCredentialProfile(payload: unknown): CredentialProfileInput {
+const monidCredentialProfile = (payload: unknown): CredentialProfileInput => {
   const user = optionalRecord(optionalRecord(payload)?.user);
-  const userId = optionalString(user?.userId);
+  const userId = optionalString(user?.userId) ?? "";
   const username = optionalString(user?.username);
   if (!userId) {
     throw providerResponseError("Monid credential validation returned an invalid user identity");
@@ -76,4 +35,45 @@ function monidCredentialProfile(payload: unknown): CredentialProfileInput {
     accountId: workspaceId ?? userId,
     displayName: workspaceName ?? username ?? userId,
   };
-}
+};
+
+export const executors: ProviderExecutors = {};
+
+export const proxy: ProviderProxyExecutor = defineProviderProxy({
+  allowedEndpoint: providerProxyEndpointPrefixes("/v1"),
+  auth: { prefix: "Bearer ", type: "api_key_authorization" },
+  baseUrl: monidApiBaseUrl,
+  service,
+  skipDnsValidation: true,
+  timeoutMs: 120_000,
+});
+
+export const credentialValidators: CredentialValidators = {
+  async apiKey(input, { fetcher, signal }) {
+    const payload = await runProviderRequest(
+      { label: "Monid credential validation", signal },
+      async (requestSignal) => {
+        const response = await fetcher(monidWhoamiUrl, {
+          headers: { authorization: `Bearer ${input.apiKey}` },
+          signal: requestSignal,
+        });
+        if (!response.ok) {
+          throw new ProviderRequestError(response.status, "Monid credential validation failed");
+        }
+
+        const bytes = await readBoundedResponseBytes(response, {
+          createError: providerResponseError,
+          fieldName: "Monid credential validation response",
+          maxBytes: monidCredentialResponseMaxBytes,
+        });
+        try {
+          return JSON.parse(new TextDecoder().decode(bytes)) as unknown;
+        } catch {
+          throw providerResponseError("Monid credential validation returned an invalid response");
+        }
+      },
+    );
+
+    return { profile: monidCredentialProfile(payload) };
+  },
+};
