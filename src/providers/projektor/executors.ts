@@ -71,6 +71,7 @@ export const credentialValidators: CredentialValidators = {
     if (!userId) {
       throw providerResponseError("Projektor credential validation returned an invalid user identity");
     }
+    // oxlint-disable-next-line eslint/sort-keys -- Keep the published validator result order of profile followed by metadata.
     return {
       profile: { accountId: `${apiBaseUrl}:${userId}`, displayName: optionalString(user?.name) ?? userId },
       metadata: { apiBaseUrl },
