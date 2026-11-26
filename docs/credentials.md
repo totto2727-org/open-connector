@@ -372,7 +372,7 @@ requests select the provider's default connection and are denied unless its ID i
 `connection_not_allowed` before lookup. Runtime discovery is filtered; `GET /api/connections` and
 Action `agent.md` guides are not.
 
-`OOMOL_CONNECT_RUNTIME_TOKEN` is still accepted for bootstrap scripts and backward compatibility.
+The Node server also accepts `OOMOL_CONNECT_RUNTIME_TOKEN` for bootstrap scripts and backward compatibility.
 
 The bundled web console receives a same-site local cookie from the runtime so it can keep working
 when API-token authentication is enabled.
