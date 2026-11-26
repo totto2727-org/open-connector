@@ -8,7 +8,6 @@ import OAuthProvider, {
   insufficientScope,
   OAuthError,
 } from "@cloudflare/workers-oauth-provider";
-import { timingSafeEqual } from "node:crypto";
 import { readBoundedResponseBytes } from "../../core/request.ts";
 import { D1RuntimeDatabase } from "../storage/d1/runtime-store.ts";
 import { RuntimeTokenService } from "../storage/runtime-token-service.ts";
@@ -17,7 +16,7 @@ import { renderMcpConsentPage } from "./mcp-consent-page.ts";
 
 interface McpOAuthProps {
   runtimeToken: string;
-  legacy?: boolean;
+  direct?: boolean;
 }
 
 interface McpExecutionContext {
@@ -58,12 +57,11 @@ export function createMcpOAuthHandler(origin: string, runtime: RuntimeHandler): 
     apiHandler: {
       async fetch(request: Request, env: CloudflareEnv, context: McpAuthorizedContext): Promise<Response> {
         const props = context.props;
-        if (!props.legacy && !context.auth.scope.includes(accessScope)) {
+        if (!props.direct && !context.auth.scope.includes(accessScope)) {
           return insufficientScope(context.auth, [accessScope]);
         }
-        // The backing token is an independently revocable runtime credential, never the admin token.
-        // Revalidate it on every request, so revocation also works before the first token is created.
-        if (!(await validRuntimeToken(env, props.runtimeToken))) {
+        // Revalidate the stored key on every request so revocation applies to existing OAuth access tokens.
+        if (!(await runtimeTokens(env).verifyToken(props.runtimeToken))) {
           return invalidMcpToken(origin);
         }
         const headers = new Headers(request.headers);
@@ -74,12 +72,12 @@ export function createMcpOAuthHandler(origin: string, runtime: RuntimeHandler): 
       },
     },
     async resolveExternalToken({ token, env }) {
-      if (!(await validRuntimeToken(env, token))) return null;
-      return { props: { runtimeToken: token, legacy: true }, audience: resource };
+      if (!(await runtimeTokens(env).verifyToken(token))) return null;
+      return { props: { runtimeToken: token, direct: true }, audience: resource };
     },
     async tokenExchangeCallback({ props, env }) {
       const credential = props as McpOAuthProps;
-      if (!(await validRuntimeToken(env, credential.runtimeToken))) {
+      if (!(await runtimeTokens(env).verifyToken(credential.runtimeToken))) {
         throw new OAuthError("invalid_grant", { description: "This connection was revoked. Authorize again." });
       }
     },
@@ -187,18 +185,6 @@ export function createMcpOAuthHandler(origin: string, runtime: RuntimeHandler): 
 
 function runtimeTokens(env: CloudflareEnv): RuntimeTokenService {
   return new RuntimeTokenService(new D1RuntimeDatabase(env.DB).runtimeTokenStore);
-}
-
-async function validRuntimeToken(env: CloudflareEnv, token: string): Promise<boolean> {
-  if (!token) return false;
-  if (env.OOMOL_CONNECT_RUNTIME_TOKEN?.trim() && sameToken(token, env.OOMOL_CONNECT_RUNTIME_TOKEN.trim())) return true;
-  return runtimeTokens(env).verifyToken(token);
-}
-
-function sameToken(left: string, right: string): boolean {
-  const a = Buffer.from(left);
-  const b = Buffer.from(right);
-  return a.length === b.length && timingSafeEqual(a, b);
 }
 
 function invalidMcpToken(origin: string): Response {

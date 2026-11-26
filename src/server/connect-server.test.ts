@@ -835,6 +835,17 @@ describe("ConnectServer", () => {
       body: JSON.stringify({ input: {} }),
     });
     expect(adminActionRun.status).toBe(404);
+
+    const consoleActionRun = await app.request("/api/actions/example.echo/run", {
+      method: "POST",
+      headers: {
+        cookie: authorized.headers.get("set-cookie")?.split(";", 1)[0] ?? "",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ input: {} }),
+    });
+    expect(consoleActionRun.status).toBe(404);
+    await expect(consoleActionRun.json()).resolves.toMatchObject({ success: false, errorCode: "unknown_action" });
   });
 
   it("accepts JWT access tokens alongside existing runtime tokens", async () => {

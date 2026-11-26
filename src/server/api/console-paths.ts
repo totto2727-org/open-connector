@@ -13,3 +13,9 @@ export function isConsoleShellPath(path: string): boolean {
 export function isConsoleShellRequest(path: string, method: string): boolean {
   return (method === "GET" || method === "HEAD") && isConsoleShellPath(path);
 }
+
+export const consoleActionRunRoute = "/api/actions/:actionId/run";
+
+export function isConsoleActionRunRequest(path: string, method: string): boolean {
+  return method === "POST" && /^\/api\/actions\/[^/]+\/run$/.test(path);
+}

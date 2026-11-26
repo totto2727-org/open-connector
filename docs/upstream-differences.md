@@ -25,7 +25,9 @@ The full upstream comparison baseline above is unchanged.
 The fork separately backports the Worker handler and consent UI from [`85a09391bb691ede5a2e71acef7b1ba175440754`](https://github.com/oomol-lab/open-connector/commit/85a09391bb691ede5a2e71acef7b1ba175440754), including [Worker MCP OAuth (#757)](https://github.com/oomol-lab/open-connector/pull/757), [consent scopes (#762)](https://github.com/oomol-lab/open-connector/pull/762), and the Worker policy fix in [`a037cebc9`](https://github.com/oomol-lab/open-connector/commit/a037cebc9).
 It uses the same locked `@cloudflare/workers-oauth-provider` version, `1.2.3`, without backporting the Node authorization server or its SQL migrations.
 The fork gates OAuth by a dedicated API origin, verifies the Cloudflare Access assertion on the consent route instead of asking for an administrator password, and uses the verified Access subject as the OAuth grant owner.
-The existing Worker host keeps its runtime Bearer authentication and cannot issue OAuth grants.
+Direct MCP authentication accepts individually issued D1 keys on both Worker hosts.
+OAuth access and refresh use a dedicated, revocable D1 key for each MCP connection.
+The existing Worker host uses direct bearer authentication for MCP.
 The fork's tracked Wrangler configuration adds the API custom domain, OAuth KV and the public-fetch compatibility flag required by CIMD.
 See [Cloudflare MCP OAuth rollout](cloudflare.md#mcp-oauth-on-the-fork).
 
@@ -64,10 +66,13 @@ See [runtime API](runtime-api.md#buffered-native-http-passthrough) and [Monid in
 
 ### Cloudflare Access for the Web Console
 
-The fork protects the Web Console and its administrator APIs with Cloudflare Access instead of the local admin password on the personal Worker.
-The Worker-specific assertion verifier is in `src/server/cloudflare/access-admin.ts`; `src/server/api/auth.ts` and `src/server/connect-app.ts` only expose the request verification hook and the runtime-auth requirement.
+The fork uses Cloudflare Access for the Worker Web Console and administrator APIs.
+The Worker-specific assertion verifier is in `src/server/cloudflare/access-admin.ts` and checks the console origin for mutations.
+The console issues action runs through `POST /api/actions/:actionId/run` with its Access session.
 The fork's `wrangler.jsonc` declares the protected console origin and runs the Worker before static assets so an alternate Worker URL cannot bypass the console check.
-The existing CLI origin keeps runtime bearer authentication, and other deployments keep the upstream password behavior unless they configure Access.
+Worker runtime endpoints require issued keys from D1, including when there are no keys.
+The Worker has no static admin or runtime bearer binding.
+Node retains the upstream bearer behavior.
 See [Cloudflare Access deployment](cloudflare-access.md) for rollout and verification.
 
 ### Cloudflare script selection

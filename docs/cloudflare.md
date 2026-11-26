@@ -78,13 +78,9 @@ All Wrangler commands that read the Worker config use the tracked `wrangler.json
 The local Worker preview stores its D1, R2, and KV data under the ignored `.wrangler` directory.
 This data is separate from the remote Cloudflare resources.
 
-Remote secrets set with `wrangler secret put` are not available to the local preview. To test local
-admin authentication and encryption of credentials, OAuth client configuration, and completed
-idempotent Action responses, add separate local values to the ignored `.env` file before starting
-the Worker:
+Set a separate encryption key in the ignored `.env` file before you test encrypted storage in the local preview:
 
 ```dotenv
-OOMOL_CONNECT_ADMIN_TOKEN=replace-with-a-local-admin-token
 OOMOL_CONNECT_ENCRYPTION_KEY=replace-with-a-local-encryption-key
 ```
 
@@ -98,13 +94,14 @@ npm run dev:cloudflare
 `npm run dev:cloudflare` generates the catalog, builds the Web Console, copies catalog assets, and runs `wrangler dev`.
 The local Worker preview uses the same generated provider Action executor registry as the Node runtime.
 
-Check the local Worker and open the Web Console at `http://localhost:8787`:
+Check the local Worker:
 
 ```bash
 curl http://localhost:8787/health
 ```
 
 The health endpoint should return `{"ok":true}`.
+Use `npm test -- src/server/cloudflare.test.ts` to verify administrator and runtime authentication locally.
 
 ## Remote Deployment
 
@@ -122,22 +119,20 @@ It sets `CI=true` to automatically confirm pending migrations, so declining an i
 Review the pending migrations before running either script.
 Passing `--dry-run` to `deploy:cloudflare` only skips Worker upload; the remote migration step still runs.
 
-Generate two independent random values by running this command twice:
+Generate an encryption key for a new deployment:
 
 ```bash
 openssl rand -base64 32
 ```
 
-Store the encryption key in a password manager or another external secrets vault. If it is lost or
-replaced without first re-encrypting existing D1 records, encrypted credentials, OAuth client
-configuration, and completed idempotent Action responses cannot be recovered. Keep the admin token
-available to operators who need the Web Console or admin API.
+Store the encryption key in a secrets vault.
+Keep the current key for existing deployments so the Worker can decrypt the D1 records.
 
-Paste the generated values when Wrangler prompts for each secret:
+Set the encryption key and the Cloudflare Access application audience:
 
 ```bash
-npx wrangler secret put OOMOL_CONNECT_ADMIN_TOKEN
 npx wrangler secret put OOMOL_CONNECT_ENCRYPTION_KEY
+npx wrangler secret put OPEN_CONNECTOR_ACCESS_AUDIENCE
 ```
 
 Deploy:
@@ -150,8 +145,7 @@ npm run deploy:cloudflare
 The tracked `wrangler.jsonc` maps the built Web Console assets to the `ASSETS` binding used by the Worker.
 `--minify` matters on Workers beyond the upload size limit: a heap snapshot of the running isolate (taken through the `wrangler dev` inspector) shows the script source retained as one string for as long as the isolate lives, so the 13.8 MiB minified script costs about half the isolate memory of the 28.7 MiB unminified one, out of the 128 MB each Worker isolate gets.
 
-Use the Worker URL printed by Wrangler to check the deployed runtime, then open the same URL in a
-browser and enter the admin token to access the Web Console:
+Use the Worker URL printed by Wrangler to check the deployed runtime:
 
 ```bash
 curl https://open-connector.example.workers.dev/health
@@ -159,15 +153,17 @@ curl https://open-connector.example.workers.dev/health
 
 The health endpoint should return `{"ok":true}`. Replace the example URL with the deployed Worker
 URL or your custom domain.
+Open the configured console origin to sign in with Cloudflare Access.
 
 ## MCP OAuth on the fork
 
 Use `https://open-connector-api.totto2727.dev/mcp` to connect an OAuth-capable MCP client.
-The API origin publishes OAuth discovery, Dynamic Client Registration (DCR), and Client ID Metadata Document (CIMD) support.
-Only `/oauth/mcp/authorize` on that origin requires Cloudflare Access.
+The API origin publishes OAuth discovery and supports Dynamic Client Registration (DCR) and Client ID Metadata Documents (CIMD).
+Only the browser consent route at `/oauth/mcp/authorize` requires Cloudflare Access.
 Sign in with your passkey, then select **Allow access** or **Deny**.
-Do not send an administrator password or an Access cookie to the token or MCP endpoint.
-The existing CLI endpoint at `https://open-connector.totto2727.workers.dev` still uses runtime Bearer tokens on `/v1` and `/mcp`.
+The MCP client uses the OAuth access token to call `/mcp` on the API origin.
+An individually issued runtime API key also gives direct bearer access to `/mcp` on either origin and to runtime endpoints under `/v1`.
+Keep `https://open-connector.totto2727.workers.dev` as the CLI endpoint.
 
 1. Apply the OpenConnector Access application from [infra PR #30](https://github.com/totto2727-org/infra/pull/30) before adding the API domain to the Worker.
 2. Set the shared `OPEN_CONNECTOR_ACCESS_AUDIENCE` Worker secret to the application's `openConnectorAccessAudience` Pulumi output.
@@ -185,6 +181,7 @@ After deployment, request `/.well-known/oauth-authorization-server` on the API o
 It must return OAuth metadata rather than an Access login redirect.
 Connect from an OAuth client and verify that Access prompts for login only when the browser opens the authorization page.
 To revoke the MCP connection, delete its `MCP OAuth` runtime API key in the console.
+Verify that subsequent MCP calls and token refresh requests for that connection fail.
 
 ## Runtime Behavior
 
@@ -218,9 +215,11 @@ Compression Rule matching `text/markdown` if your deployment serves agent guides
 
 ## Configuration
 
-Cloudflare uses the same environment variable names for origin, auth tokens, action policy, transit
-file limits, and credential encryption. `PORT`, `HOST`, `OOMOL_CONNECT_DATA_DIR`,
-`OOMOL_CONNECT_CATALOG_LAZY_SCHEMAS`, and `OOMOL_CONNECT_CATALOG_SCHEMA_CACHE_FILES` are local
-Node-only settings on Workers.
+Cloudflare uses the same environment variable names for origin, action policy, transit file limits, and credential encryption.
+The Worker requires an issued runtime API key for runtime HTTP and direct MCP access, even when D1 has no keys.
+Use Cloudflare Access for the console and administrator APIs, including connection management and the console's action runner.
+See [Cloudflare Access deployment](cloudflare-access.md).
+
+`PORT`, `HOST`, `OOMOL_CONNECT_DATA_DIR`, `OOMOL_CONNECT_CATALOG_LAZY_SCHEMAS`, and `OOMOL_CONNECT_CATALOG_SCHEMA_CACHE_FILES` are Node-only settings.
 
 See [configuration.md](configuration.md) for all runtime environment variables.
