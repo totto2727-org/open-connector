@@ -54,10 +54,13 @@ See [runtime API](runtime-api.md#buffered-native-http-passthrough) and [Monid in
 
 ### Cloudflare Access for the Web Console
 
-The fork protects the Web Console and its administrator APIs with Cloudflare Access instead of the local admin password on the personal Worker.
-The Worker-specific assertion verifier is in `src/server/cloudflare/access-admin.ts`; `src/server/api/auth.ts` and `src/server/connect-app.ts` only expose the request verification hook and the runtime-auth requirement.
+The fork uses Cloudflare Access for the Worker Web Console and administrator APIs.
+The Worker-specific assertion verifier is in `src/server/cloudflare/access-admin.ts` and checks the console origin for mutations.
+The console issues action runs through `POST /api/actions/:actionId/run` with its Access session.
 The fork's `wrangler.jsonc` declares the protected console origin and runs the Worker before static assets so an alternate Worker URL cannot bypass the console check.
-The existing CLI origin keeps runtime bearer authentication, and other deployments keep the upstream password behavior unless they configure Access.
+Worker runtime endpoints require issued keys from D1, including when there are no keys.
+The Worker has no static admin or runtime bearer binding.
+Node retains the upstream bearer behavior.
 See [Cloudflare Access deployment](cloudflare-access.md) for rollout and verification.
 
 ### Cloudflare script selection

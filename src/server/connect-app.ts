@@ -45,7 +45,6 @@ export interface ConnectAppOptions {
   actionPolicy?: ActionPolicyService;
   registerStaticRoutes?: (app: Hono) => void;
   logger?: RuntimeLogger;
-  computeRuntimeAuthConfigured?: boolean;
   compressApiResponses?: boolean;
   serveDocumentation?: boolean;
   oauthCloseDelaySeconds?: number;
@@ -183,6 +182,6 @@ export async function createConnectApp(options: ConnectAppOptions): Promise<Conn
       Boolean(options.runtimeToken) ||
       Boolean(options.requireRuntimeAuth) ||
       Boolean(options.verifyRuntimeJwt) ||
-      (options.computeRuntimeAuthConfigured === false ? false : await hasStoredRuntimeTokens()),
+      (await hasStoredRuntimeTokens()),
   };
 }

@@ -64,7 +64,6 @@ export default {
     const verifyAdminRequest = await accessAdminVerifier(env);
     const { pathname } = new URL(request.url);
     if (
-      verifyAdminRequest &&
       pathname !== "/health" &&
       isConsoleShellRequest(pathname, request.method) &&
       !(await verifyAdminRequest(request))
@@ -124,10 +123,8 @@ async function createCloudflareApp(env: CloudflareEnv, publicOrigin: string): Pr
     publicOrigin,
     configuredOrigin: env.OOMOL_CONNECT_ORIGIN,
     secretCodec,
-    adminToken: verifyAdminRequest ? undefined : env.OOMOL_CONNECT_ADMIN_TOKEN,
     verifyAdminRequest,
-    runtimeToken: env.OOMOL_CONNECT_RUNTIME_TOKEN,
-    requireRuntimeAuth: Boolean(verifyAdminRequest),
+    requireRuntimeAuth: true,
     actionPolicy: new ActionPolicyService({
       allowedActions: parseActionPolicyList(env.OOMOL_CONNECT_ALLOWED_ACTIONS),
       blockedActions: parseActionPolicyList(env.OOMOL_CONNECT_BLOCKED_ACTIONS),
@@ -138,7 +135,6 @@ async function createCloudflareApp(env: CloudflareEnv, publicOrigin: string): Pr
     }),
     allowedCustomOAuth: parseActionPolicyList(env.OOMOL_CONNECT_ALLOWED_CUSTOM_OAUTH),
     logger: workerLogger,
-    computeRuntimeAuthConfigured: false,
     // Cloudflare compresses on egress itself: Response defaults to
     // `encodeBody: "automatic"`, so the runtime re-encodes a body that Hono's
     // compress() already gzipped. Depending on what the client negotiates, the
@@ -191,11 +187,9 @@ function createCacheKey(env: CloudflareEnv, publicOrigin: string): string {
   return JSON.stringify({
     publicOrigin,
     configuredOrigin: env.OOMOL_CONNECT_ORIGIN ?? null,
-    adminToken: env.OOMOL_CONNECT_ADMIN_TOKEN ?? "",
     accessConsoleOrigin: env.OPEN_CONNECTOR_ACCESS_CONSOLE_ORIGIN ?? null,
     accessTeam: env.OPEN_CONNECTOR_ACCESS_TEAM_DOMAIN ?? null,
     accessAudience: env.OPEN_CONNECTOR_ACCESS_AUDIENCE ?? null,
-    runtimeToken: env.OOMOL_CONNECT_RUNTIME_TOKEN ?? "",
     encryptionKey: env.OOMOL_CONNECT_ENCRYPTION_KEY ?? "",
     allowedActions: env.OOMOL_CONNECT_ALLOWED_ACTIONS ?? "",
     blockedActions: env.OOMOL_CONNECT_BLOCKED_ACTIONS ?? "",

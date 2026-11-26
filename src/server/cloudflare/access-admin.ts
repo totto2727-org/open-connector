@@ -10,12 +10,10 @@ type AdminRequestVerifier = (request: Request) => Promise<boolean>;
 
 const verifiers = new PromiseCache<AdminRequestVerifier>();
 
-export function accessAdminVerifier(settings: AccessAdminSettings): Promise<AdminRequestVerifier> | undefined {
+export function accessAdminVerifier(settings: AccessAdminSettings): Promise<AdminRequestVerifier> {
   const origin = settings.OPEN_CONNECTOR_ACCESS_CONSOLE_ORIGIN?.trim();
   const team = settings.OPEN_CONNECTOR_ACCESS_TEAM_DOMAIN?.trim();
   const audience = settings.OPEN_CONNECTOR_ACCESS_AUDIENCE?.trim();
-  if (origin === undefined && team === undefined && audience === undefined) return undefined;
-
   return verifiers.get(JSON.stringify([origin, team, audience]), async () => {
     if (!origin || !team || !audience || !/^[a-z0-9-]+\.cloudflareaccess\.com$/.test(team)) return async () => false;
 

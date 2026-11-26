@@ -473,7 +473,7 @@ function RunActionModal(props: RunActionModalProps): ReactNode {
     setResult(null);
     try {
       const parsed = input.trim() ? (JSON.parse(input) as unknown) : {};
-      const response = await fetch(`/v1/actions/${props.action.id}`, {
+      const response = await fetch(`/api/actions/${encodeURIComponent(props.action.id)}/run`, {
         method: "POST",
         headers: new Headers({ "content-type": "application/json" }),
         credentials: "same-origin",
