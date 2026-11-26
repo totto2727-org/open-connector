@@ -16,8 +16,9 @@ import {
 import { ProviderLoader } from "../providers/provider-loader.ts";
 import { executorModules } from "../providers/registry.cloudflare.generated.ts";
 import { SaasCleanupService } from "../saas/saas-cleanup-service.ts";
-import { isConsoleShellPath } from "./api/console-paths.ts";
+import { isConsoleShellPath, isConsoleShellRequest } from "./api/console-paths.ts";
 import { DEFAULT_OAUTH_CLOSE_DELAY_SECONDS } from "./api/oauth-completion-page.ts";
+import { accessAdminVerifier } from "./cloudflare/access-admin.ts";
 import { loadCatalogFromAssets } from "./cloudflare/catalog-assets.ts";
 import { readNonNegativeInteger, readPositiveInteger, resolvePublicOrigin } from "./cloudflare/cloudflare-env.ts";
 import { createConnectApp } from "./connect-app.ts";
@@ -60,6 +61,18 @@ export default {
     ctx.waitUntil(Promise.all([cleanup.run(), triggerCleanup()]).then(() => undefined));
   },
   async fetch(request: Request, env: CloudflareEnv, _ctx: CloudflareExecutionContext): Promise<Response> {
+    const verifyAdminRequest = await accessAdminVerifier(env);
+    const { pathname } = new URL(request.url);
+    if (
+      pathname !== "/health" &&
+      isConsoleShellRequest(pathname, request.method) &&
+      !(await verifyAdminRequest(request))
+    ) {
+      return new Response("Cloudflare Access sign-in is required.", {
+        status: 401,
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
     setPrivateNetworkAccessAllowed(parsePrivateNetworkAccessFlag(env.OOMOL_CONNECT_ALLOW_PRIVATE_NETWORK));
     setEgressTrustedHosts(parseEgressTrustedHosts(env.OOMOL_CONNECT_EGRESS_TRUSTED_HOSTS));
     const publicOrigin = resolvePublicOrigin(request, env);
@@ -83,6 +96,7 @@ async function createCloudflareApp(env: CloudflareEnv, publicOrigin: string): Pr
   // is served the same way as every later one.
   await preloadOptionalServerModules();
   const secretCodec = await createSecretCodec(env.OOMOL_CONNECT_ENCRYPTION_KEY);
+  const verifyAdminRequest = await accessAdminVerifier(env);
   return await createConnectApp({
     catalog: await loadCatalogOnce(assets),
     providerLoader: new ProviderLoader(executorModules),
@@ -109,8 +123,8 @@ async function createCloudflareApp(env: CloudflareEnv, publicOrigin: string): Pr
     publicOrigin,
     configuredOrigin: env.OOMOL_CONNECT_ORIGIN,
     secretCodec,
-    adminToken: env.OOMOL_CONNECT_ADMIN_TOKEN,
-    runtimeToken: env.OOMOL_CONNECT_RUNTIME_TOKEN,
+    verifyAdminRequest,
+    requireRuntimeAuth: true,
     actionPolicy: new ActionPolicyService({
       allowedActions: parseActionPolicyList(env.OOMOL_CONNECT_ALLOWED_ACTIONS),
       blockedActions: parseActionPolicyList(env.OOMOL_CONNECT_BLOCKED_ACTIONS),
@@ -121,7 +135,6 @@ async function createCloudflareApp(env: CloudflareEnv, publicOrigin: string): Pr
     }),
     allowedCustomOAuth: parseActionPolicyList(env.OOMOL_CONNECT_ALLOWED_CUSTOM_OAUTH),
     logger: workerLogger,
-    computeRuntimeAuthConfigured: false,
     // Cloudflare compresses on egress itself: Response defaults to
     // `encodeBody: "automatic"`, so the runtime re-encodes a body that Hono's
     // compress() already gzipped. Depending on what the client negotiates, the
@@ -174,8 +187,9 @@ function createCacheKey(env: CloudflareEnv, publicOrigin: string): string {
   return JSON.stringify({
     publicOrigin,
     configuredOrigin: env.OOMOL_CONNECT_ORIGIN ?? null,
-    adminToken: env.OOMOL_CONNECT_ADMIN_TOKEN ?? "",
-    runtimeToken: env.OOMOL_CONNECT_RUNTIME_TOKEN ?? "",
+    accessConsoleOrigin: env.OPEN_CONNECTOR_ACCESS_CONSOLE_ORIGIN ?? null,
+    accessTeam: env.OPEN_CONNECTOR_ACCESS_TEAM_DOMAIN ?? null,
+    accessAudience: env.OPEN_CONNECTOR_ACCESS_AUDIENCE ?? null,
     encryptionKey: env.OOMOL_CONNECT_ENCRYPTION_KEY ?? "",
     allowedActions: env.OOMOL_CONNECT_ALLOWED_ACTIONS ?? "",
     blockedActions: env.OOMOL_CONNECT_BLOCKED_ACTIONS ?? "",

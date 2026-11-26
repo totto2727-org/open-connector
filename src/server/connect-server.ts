@@ -53,6 +53,7 @@ import { renderActionMarkdown } from "./api/action-markdown.ts";
 import { clearLocalAuthCookie, createLocalAuthMiddleware, readLocalAuthSession, readRuntimeGrant } from "./api/auth.ts";
 import { getResponseCachePolicy } from "./api/cache-policy.ts";
 import { createConnectionRoutes } from "./api/connection-routes.ts";
+import { consoleActionRunRoute, isConsoleActionRunRequest } from "./api/console-paths.ts";
 import {
   HttpRequestError,
   internalError,
@@ -315,6 +316,7 @@ export class ConnectServer {
       this.getActionMarkdown(context, context.req.param("actionId")),
     );
     app.get("/api/actions/:actionId", (context) => this.getAction(context, context.req.param("actionId")));
+    app.post(consoleActionRunRoute, (context) => this.createRuntimeActionRun(context, context.req.param("actionId")));
     app.get("/api/auth/session", async (context) => context.json(await readLocalAuthSession(context, auth)));
     app.post("/api/auth/logout", (context) => {
       clearLocalAuthCookie(context);
@@ -447,6 +449,8 @@ export class ConnectServer {
     if (this.options.registerStaticRoutes) this.options.registerStaticRoutes(app);
     else app.notFound(notFound);
     app.onError((error, context) => {
+      const runtimeResponse =
+        context.req.path.startsWith("/v1/") || isConsoleActionRunRequest(context.req.path, context.req.method);
       if (context.req.path.startsWith("/v1/passthrough/")) {
         if (error instanceof HttpRequestError || error instanceof SaasError) {
           return writeRuntimePassthroughFailure(context, {
@@ -473,7 +477,7 @@ export class ConnectServer {
         });
       }
       if (error instanceof ProviderDispatchRequestError) {
-        if (context.req.path.startsWith("/v1/"))
+        if (runtimeResponse)
           return writeRuntimeFailure(context, {
             status: 429,
             errorCode: "rate_limited",
@@ -496,7 +500,7 @@ export class ConnectServer {
           "SaaS request failed",
         );
         if (error.retryAfter) context.header("Retry-After", error.retryAfter);
-        if (context.req.path.startsWith("/v1/"))
+        if (runtimeResponse)
           return writeRuntimeFailure(context, { status: error.status, errorCode: error.code, message: error.message });
         return context.json(
           { error: { code: error.code, message: error.message, reason: error.reason } },
@@ -504,7 +508,7 @@ export class ConnectServer {
         );
       }
       if (error instanceof HttpRequestError) {
-        if (context.req.path.startsWith("/v1/")) {
+        if (runtimeResponse) {
           return writeRuntimeFailure(context, {
             status: error.status,
             errorCode: error.code,
@@ -521,7 +525,7 @@ export class ConnectServer {
         },
         "request failed",
       );
-      if (context.req.path.startsWith("/v1/")) {
+      if (runtimeResponse) {
         return writeRuntimeFailure(context, {
           status: 500,
           errorCode: "internal_error",

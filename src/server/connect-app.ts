@@ -37,13 +37,14 @@ export interface ConnectAppOptions {
   configuredOrigin?: string;
   secretCodec: ISecretCodec;
   adminToken?: string;
+  verifyAdminRequest?(request: Request): Promise<boolean>;
   runtimeToken?: string;
+  requireRuntimeAuth?: boolean;
   allowedCustomOAuth?: string[];
   verifyRuntimeJwt?: RuntimeJwtVerifier;
   actionPolicy?: ActionPolicyService;
   registerStaticRoutes?: (app: Hono) => void;
   logger?: RuntimeLogger;
-  computeRuntimeAuthConfigured?: boolean;
   compressApiResponses?: boolean;
   serveDocumentation?: boolean;
   oauthCloseDelaySeconds?: number;
@@ -160,7 +161,9 @@ export async function createConnectApp(options: ConnectAppOptions): Promise<Conn
       registerStaticRoutes: options.registerStaticRoutes,
       auth: {
         adminToken: options.adminToken,
+        verifyAdminRequest: options.verifyAdminRequest,
         runtimeToken: options.runtimeToken,
+        requireRuntimeAuth: options.requireRuntimeAuth,
         hasRuntimeTokens: hasStoredRuntimeTokens,
         resolveRuntimeToken: (token) => runtimeTokens.resolveToken(token),
         verifyRuntimeJwt: options.verifyRuntimeJwt,
@@ -177,7 +180,8 @@ export async function createConnectApp(options: ConnectAppOptions): Promise<Conn
     }).createApp(),
     runtimeAuthConfigured:
       Boolean(options.runtimeToken) ||
+      Boolean(options.requireRuntimeAuth) ||
       Boolean(options.verifyRuntimeJwt) ||
-      (options.computeRuntimeAuthConfigured === false ? false : await hasStoredRuntimeTokens()),
+      (await hasStoredRuntimeTokens()),
   };
 }

@@ -8,11 +8,14 @@ import type {
 } from "./cloudflare/cloudflare-bindings.ts";
 import type { CloudflareEnv } from "./cloudflare/cloudflare-env.ts";
 
+import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { provider as genderize } from "../providers/genderize/definition.ts";
 import worker from "./cloudflare.ts";
 import { createWorkerSecretCodec } from "./secrets/worker-secret-codec.ts";
 import { D1RuntimeDatabase } from "./storage/d1/runtime-store.ts";
 import { SqliteD1Database } from "./storage/d1/test-database.ts";
+import { RuntimeTokenService } from "./storage/runtime-token-service.ts";
 
 const provider = {
   service: "example",
@@ -26,6 +29,154 @@ const provider = {
 describe("cloudflare worker", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("allows Access administrators to run console actions and manage keys without granting runtime access", async ({
+    onTestFinished,
+  }) => {
+    const consoleOrigin = "https://console.example.com";
+    const apiOrigin = "https://connector.example.workers.dev";
+    const team = "worker-test.cloudflareaccess.com";
+    const audience = "test-audience";
+    const issuer = `https://${team}`;
+    const { privateKey, publicKey } = await generateKeyPair("RS256");
+    const key = { ...(await exportJWK(publicKey)), kid: "access-signing-key" };
+    const prediction = { name: "peter", gender: "male", probability: 1, count: 42 };
+    const fetchJwks = vi.fn<typeof fetch>(async (input) => {
+      const url = new URL(input instanceof Request ? input.url : input);
+      if (url.origin === issuer) return Response.json({ keys: [key] });
+      if (url.origin === "https://api.genderize.io") return Response.json(prediction);
+      throw new Error(`Unexpected network request: ${url.origin}`);
+    });
+    vi.stubGlobal("fetch", fetchJwks);
+    const sign = (aud = audience, iss = issuer, expires = "5m", email = "admin@example.com") =>
+      new SignJWT({ email })
+        .setProtectedHeader({ alg: "RS256", kid: key.kid })
+        .setIssuer(iss)
+        .setAudience(aud)
+        .setSubject("access-user")
+        .setExpirationTime(expires)
+        .sign(privateKey);
+    const db = new SqliteD1Database();
+    onTestFinished(() => db.close());
+    const env = {
+      ...createEnv(),
+      DB: db,
+      ASSETS: memoryAssets({ ...chunkedCatalog(), "/": "console", "/assets/index.js": "console JS" }),
+      OPEN_CONNECTOR_ACCESS_CONSOLE_ORIGIN: consoleOrigin,
+      OPEN_CONNECTOR_ACCESS_TEAM_DOMAIN: team,
+      OPEN_CONNECTOR_ACCESS_AUDIENCE: audience,
+      OOMOL_CONNECT_ADMIN_TOKEN: "old-password",
+    };
+    const request = (origin: string, path: string, init?: RequestInit) =>
+      worker.fetch(new Request(`${origin}${path}`, init), env, createExecutionContext());
+    const authenticated = { "Cf-Access-Jwt-Assertion": await sign() };
+
+    await expect(request(consoleOrigin, "/")).resolves.toMatchObject({ status: 401 });
+    await expect(request(consoleOrigin, "/assets/index.js")).resolves.toMatchObject({ status: 401 });
+    await expect(request(consoleOrigin, "/", { headers: authenticated })).resolves.toMatchObject({ status: 200 });
+    await expect(request(apiOrigin, "/", { headers: authenticated })).resolves.toMatchObject({ status: 401 });
+    await expect(request(apiOrigin, "/health")).resolves.toMatchObject({ status: 200 });
+    const session = await request(consoleOrigin, "/api/auth/session", { headers: authenticated });
+    await expect(session.json()).resolves.toEqual({ adminAuthConfigured: false, authenticated: true });
+    expect(session.headers.get("set-cookie")).toBeNull();
+
+    for (const token of [
+      "forged",
+      await sign("other-audience"),
+      await sign(audience, "https://other.example"),
+      await sign(audience, issuer, "-5m"),
+      await sign(audience, issuer, "5m", ""),
+    ]) {
+      await expect(
+        request(consoleOrigin, "/openapi.json", {
+          headers: { "Cf-Access-Jwt-Assertion": token, authorization: "Bearer old-password" },
+        }),
+      ).resolves.toMatchObject({ status: 401 });
+    }
+    expect(fetchJwks).toHaveBeenCalledWith(`${issuer}/cdn-cgi/access/certs`, expect.anything());
+
+    const json = { ...authenticated, "content-type": "application/json", origin: consoleOrigin };
+    const put = (origin: string) =>
+      request(consoleOrigin, "/api/connections/genderize", {
+        method: "PUT",
+        headers: { ...json, origin },
+        body: JSON.stringify({ authType: "api_key", values: { apiKey: "provider-test-key" } }),
+      });
+    await expect(put("https://other.example")).resolves.toMatchObject({ status: 401 });
+    await expect(put(consoleOrigin)).resolves.toMatchObject({ status: 200 });
+
+    const run = { method: "POST", headers: json, body: JSON.stringify({ input: { name: "peter" } }) };
+    const consoleRun = "/api/actions/genderize.predict_gender/run";
+    const runtimeRun = "/v1/actions/genderize.predict_gender";
+    await expect(request(consoleOrigin, runtimeRun, run)).resolves.toMatchObject({ status: 401 });
+    await expect(request(apiOrigin, consoleRun, run)).resolves.toMatchObject({ status: 401 });
+    const debug = await request(consoleOrigin, consoleRun, run);
+    expect(debug.status).toBe(200);
+    await expect(debug.json()).resolves.toMatchObject({ success: true, data: prediction });
+
+    const created = await request(consoleOrigin, "/api/runtime-tokens", {
+      method: "POST",
+      headers: json,
+      body: JSON.stringify({ name: "CLI" }),
+    });
+    expect(created.status).toBe(200);
+    const { token, record } = await created.json();
+    const bearer = { "content-type": "application/json", authorization: `Bearer ${token}` };
+    await expect(request(apiOrigin, "/openapi.json", { headers: bearer })).resolves.toMatchObject({ status: 401 });
+    await expect(request(consoleOrigin, consoleRun, { ...run, headers: bearer })).resolves.toMatchObject({
+      status: 401,
+    });
+    await expect(request(apiOrigin, runtimeRun, { ...run, headers: bearer })).resolves.toMatchObject({ status: 200 });
+    await expect(
+      request(consoleOrigin, `/api/runtime-tokens/${record.id}`, { method: "DELETE", headers: json }),
+    ).resolves.toMatchObject({ status: 200 });
+    await expect(request(apiOrigin, runtimeRun, { ...run, headers: bearer })).resolves.toMatchObject({ status: 401 });
+
+    const { OPEN_CONNECTOR_ACCESS_AUDIENCE: _audience, ...incomplete } = env;
+    const missingAudience = await worker.fetch(
+      new Request(`${consoleOrigin}/openapi.json`, { headers: { authorization: "Bearer old-password" } }),
+      incomplete,
+      createExecutionContext(),
+    );
+    expect(missingAudience.status).toBe(401);
+  });
+
+  it("requires an issued key on runtime routes even when there are no stored keys or Access settings", async () => {
+    const origin = "https://runtime-auth.example.workers.dev";
+    const db = new SqliteD1Database();
+    const tokens = new RuntimeTokenService(new D1RuntimeDatabase(db).runtimeTokenStore);
+    const oldToken = "old-shared-value";
+    // Simulate an obsolete binding still present on the deployed Worker during rollout.
+    const env = { ...createEnv(), DB: db, OOMOL_CONNECT_RUNTIME_TOKEN: oldToken };
+    const request = (path: string, token?: string) =>
+      worker.fetch(
+        new Request(origin + path, { headers: token ? { authorization: `Bearer ${token}` } : {} }),
+        env,
+        createExecutionContext(),
+      );
+    try {
+      await expect(request("/health")).resolves.toMatchObject({ status: 200 });
+      await expect(request("/v1/health")).resolves.toMatchObject({ status: 401 });
+      await expect(request("/v1/health", oldToken)).resolves.toMatchObject({ status: 401 });
+      await expect(request("/mcp/tools")).resolves.toMatchObject({ status: 401 });
+      await expect(request("/mcp/tools", oldToken)).resolves.toMatchObject({ status: 401 });
+      await expect(request("/api/runtime-tokens")).resolves.toMatchObject({ status: 401 });
+      await expect(request("/v1/connections")).resolves.toMatchObject({ status: 401 });
+
+      const { token, record } = await tokens.createToken("CLI");
+      await expect(request("/v1/health", token)).resolves.toMatchObject({ status: 200 });
+      await expect(request("/mcp/tools", token)).resolves.toMatchObject({ status: 200 });
+      await expect(request("/api/runtime-tokens", token)).resolves.toMatchObject({ status: 401 });
+
+      await tokens.revokeToken(record.id);
+      await expect(request("/v1/health", token)).resolves.toMatchObject({ status: 401 });
+      await expect(request("/mcp/tools", token)).resolves.toMatchObject({ status: 401 });
+      await expect(request("/v1/health")).resolves.toMatchObject({ status: 401 });
+    } finally {
+      db.close();
+    }
   });
 
   it("deduplicates concurrent app creation and retries after a transient catalog failure", async () => {
@@ -72,11 +223,13 @@ describe("cloudflare worker", () => {
   });
 
   it("rejects SaaS configuration when the origin comes only from the request URL", async () => {
-    const env = { ...createEnv(), OOMOL_CONNECT_ENCRYPTION_KEY: "saas-origin-test" };
+    const origin = "https://untrusted-request.example";
+    const admin = await accessAdminFixture(origin);
+    const env = { ...createEnv(), ...admin.env, OOMOL_CONNECT_ENCRYPTION_KEY: "saas-origin-test" };
     const response = await worker.fetch(
       new Request("https://untrusted-request.example/api/oauth/managed-project", {
         method: "PUT",
-        headers: { "content-type": "application/json" },
+        headers: { ...admin.headers, "content-type": "application/json" },
         body: JSON.stringify({ baseUrl: "https://saas.example", projectApiKey: "project-secret" }),
       }),
       env,
@@ -87,11 +240,13 @@ describe("cloudflare worker", () => {
   });
 
   it("writes connection logs to console", async () => {
+    const origin = "https://connect.example.com";
+    const admin = await accessAdminFixture(origin);
     const info = vi.spyOn(console, "info").mockImplementation(() => {});
     const response = await worker.fetch(
       new Request("https://connect.example.com/api/connections/example", {
         method: "PUT",
-        headers: { "content-type": "application/json" },
+        headers: { ...admin.headers, "content-type": "application/json" },
         body: JSON.stringify({
           authType: "no_auth",
           connectionName: "work",
@@ -100,7 +255,7 @@ describe("cloudflare worker", () => {
           },
         }),
       }),
-      createEnv(),
+      { ...createEnv(), ...admin.env },
       createExecutionContext(),
     );
 
@@ -125,11 +280,13 @@ describe("cloudflare worker", () => {
   });
 
   it("leaves dashboard JSON uncompressed for edge compression", async () => {
+    const origin = "https://compression.example.com";
+    const admin = await accessAdminFixture(origin);
     const response = await worker.fetch(
       new Request("https://compression.example.com/api/auth/session", {
-        headers: { "accept-encoding": "gzip" },
+        headers: { ...admin.headers, "accept-encoding": "gzip" },
       }),
-      createEnv(),
+      { ...createEnv(), ...admin.env },
       createExecutionContext(),
     );
 
@@ -145,17 +302,19 @@ describe("cloudflare worker", () => {
     const namespace = new MemoryKVNamespace();
     // A distinct host keeps this out of the R2 test's cached app instance.
     const origin = "https://kv.example.com";
+    const admin = await accessAdminFixture(origin);
     const env: CloudflareEnv = {
       DB: new EmptyMarketplaceD1Database(),
       TRANSIT_FILES: namespace,
       TRANSIT_FILES_BACKEND: "kv",
       ASSETS: memoryAssets(chunkedCatalog()),
+      ...admin.env,
     };
 
     const form = new FormData();
     form.set("file", new File(["kv-payload"], "note.txt", { type: "text/plain" }));
     const uploadResponse = await worker.fetch(
-      new Request(`${origin}/api/files`, { method: "POST", body: form }),
+      new Request(`${origin}/api/files`, { method: "POST", headers: admin.headers, body: form }),
       env,
       createExecutionContext(),
     );
@@ -180,17 +339,19 @@ describe("cloudflare worker", () => {
     const bucket = new MemoryR2Bucket();
     // A distinct host keeps this out of the other tests' cached app instances.
     const origin = "https://r2.example.com";
+    const admin = await accessAdminFixture(origin);
     const env: CloudflareEnv = {
       DB: new EmptyMarketplaceD1Database(),
       TRANSIT_FILES: bucket,
       // TRANSIT_FILES_BACKEND intentionally omitted -> must fall back to R2.
       ASSETS: memoryAssets(chunkedCatalog()),
+      ...admin.env,
     };
 
     const form = new FormData();
     form.set("file", new File(["r2-payload"], "note.txt", { type: "text/plain" }));
     const uploadResponse = await worker.fetch(
-      new Request(`${origin}/api/files`, { method: "POST", body: form }),
+      new Request(`${origin}/api/files`, { method: "POST", headers: admin.headers, body: form }),
       env,
       createExecutionContext(),
     );
@@ -220,6 +381,28 @@ function createEnv(): CloudflareEnv {
   };
 }
 
+async function accessAdminFixture(origin: string) {
+  const team = "console-test.cloudflareaccess.com";
+  const { privateKey, publicKey } = await generateKeyPair("RS256");
+  const key = { ...(await exportJWK(publicKey)), kid: "console-test" };
+  vi.stubGlobal("fetch", async () => Response.json({ keys: [key] }));
+  const assertion = await new SignJWT({ email: "admin@example.com" })
+    .setProtectedHeader({ alg: "RS256", kid: key.kid })
+    .setIssuer(`https://${team}`)
+    .setAudience(origin)
+    .setSubject("access-user")
+    .setExpirationTime("5m")
+    .sign(privateKey);
+  return {
+    env: {
+      OPEN_CONNECTOR_ACCESS_CONSOLE_ORIGIN: origin,
+      OPEN_CONNECTOR_ACCESS_TEAM_DOMAIN: team,
+      OPEN_CONNECTOR_ACCESS_AUDIENCE: origin,
+    },
+    headers: { "Cf-Access-Jwt-Assertion": assertion, origin },
+  };
+}
+
 function createExecutionContext(): Parameters<typeof worker.fetch>[2] {
   return {
     waitUntil() {},
@@ -230,8 +413,8 @@ function createExecutionContext(): Parameters<typeof worker.fetch>[2] {
 /** The asset layout `scripts/copy-catalog-assets.ts` emits, so the worker tests boot the shipped path. */
 function chunkedCatalog(): Record<string, unknown> {
   return {
-    "/catalog/index.json": { version: 1, providerCount: 1, chunks: ["apps-0000.json"] },
-    "/catalog/apps-0000.json": [provider],
+    "/catalog/index.json": { version: 1, providerCount: 2, chunks: ["apps-0000.json"] },
+    "/catalog/apps-0000.json": [provider, genderize],
   };
 }
 

@@ -3,7 +3,7 @@ import type { RuntimeJwtVerifier } from "./runtime-jwt.ts";
 import type { Context, MiddlewareHandler } from "hono";
 
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
-import { isConsoleShellRequest } from "./console-paths.ts";
+import { isConsoleActionRunRequest, isConsoleShellRequest } from "./console-paths.ts";
 import { jsonError } from "./http-utils.ts";
 import { writeRuntimeFailure } from "./runtime-api.ts";
 
@@ -18,7 +18,9 @@ const authCookieMaxAgeMs = authCookieMaxAgeSeconds * 1000;
  */
 export interface LocalAuthOptions {
   adminToken?: string;
+  verifyAdminRequest?(request: Request): Promise<boolean>;
   runtimeToken?: string;
+  requireRuntimeAuth?: boolean;
   hasRuntimeTokens?(): Promise<boolean>;
   resolveRuntimeToken?(token: string): Promise<RuntimeGrant | undefined>;
   verifyRuntimeJwt?: RuntimeJwtVerifier;
@@ -48,7 +50,9 @@ export function createLocalAuthMiddleware(options: LocalAuthOptions): Middleware
   const runtimeToken = normalizeToken(options.runtimeToken);
   if (
     !adminToken &&
+    !options.verifyAdminRequest &&
     !runtimeToken &&
+    !options.requireRuntimeAuth &&
     !options.hasRuntimeTokens &&
     !options.resolveRuntimeToken &&
     !options.verifyRuntimeJwt
@@ -59,15 +63,19 @@ export function createLocalAuthMiddleware(options: LocalAuthOptions): Middleware
   }
 
   return async (context, next) => {
-    const scope = readAuthScope(context.req.path);
-    if (isPublicPath(context.req.path, context.req.method)) {
+    const { path, method } = context.req;
+    const consoleRun = isConsoleActionRunRequest(path, method);
+    // Node consoles retain the same runtime and admin bearer/cookie behavior as their existing Action endpoint.
+    const scope = consoleRun && !options.verifyAdminRequest ? "runtime" : readAuthScope(path);
+    if (isPublicPath(path, method)) {
       await next();
       return;
     }
 
     if (
-      isConnectionManagementPath(context.req.path) &&
+      isConnectionManagementPath(path) &&
       !adminToken &&
+      !options.verifyAdminRequest &&
       (runtimeToken ||
         options.verifyRuntimeJwt ||
         (options.hasRuntimeTokens ? await options.hasRuntimeTokens() : options.resolveRuntimeToken !== undefined))
@@ -91,8 +99,9 @@ export function createLocalAuthMiddleware(options: LocalAuthOptions): Middleware
     // configured. Without that, a missing admin token must not open POST
     // /v1/actions/* while runtime tokens/JWT are otherwise enforcing auth.
     if (
-      canUseAdminAuth(context.req.path, context.req.method) &&
-      normalizeToken(options.adminToken) &&
+      (consoleRun || (method === "POST" && /^\/v1\/actions\/[^/]+$/.test(path))) &&
+      adminToken &&
+      !options.verifyAdminRequest &&
       (await hasValidToken(context, options, "admin"))
     ) {
       await installAdminCookieForBearer(context, options);
@@ -100,14 +109,14 @@ export function createLocalAuthMiddleware(options: LocalAuthOptions): Middleware
       return;
     }
 
-    if (isConnectionManagementPath(context.req.path)) {
+    if (isConnectionManagementPath(path)) {
       return writeRuntimeFailure(context, {
         status: 401,
         errorCode: "unauthorized",
         message: "A valid administrator bearer token is required.",
       });
     }
-    if (context.req.path.startsWith("/v1/")) {
+    if (path.startsWith("/v1/") || consoleRun) {
       return writeRuntimeFailure(context, {
         status: 401,
         errorCode: "unauthorized",
@@ -147,6 +156,9 @@ function isPublicPath(path: string, method: string): boolean {
 }
 
 export async function readLocalAuthSession(context: Context, options: LocalAuthOptions): Promise<LocalAuthSession> {
+  if (options.verifyAdminRequest) {
+    return { adminAuthConfigured: false, authenticated: await options.verifyAdminRequest(context.req.raw) };
+  }
   const adminToken = normalizeToken(options.adminToken);
   if (!adminToken) {
     return { adminAuthConfigured: false, authenticated: true };
@@ -180,11 +192,13 @@ async function installAdminCookieForBearer(context: Context, options: LocalAuthO
 }
 
 async function hasValidToken(context: Context, options: LocalAuthOptions, scope: AuthScope): Promise<boolean> {
+  if (scope === "admin" && options.verifyAdminRequest) return options.verifyAdminRequest(context.req.raw);
   const token = tokenForScope(options, scope);
   if (!token) {
     if (scope === "admin") {
       return true;
     }
+    if (options.requireRuntimeAuth) return hasValidRuntimeToken(context, options);
     const hasRuntimeTokens = options.hasRuntimeTokens
       ? await options.hasRuntimeTokens()
       : options.resolveRuntimeToken !== undefined;
@@ -248,7 +262,7 @@ function base64Url(value: ArrayBuffer | ArrayBufferView): string {
   return Buffer.from(bytes).toString("base64url");
 }
 
-// Deployment secrets (`OOMOL_CONNECT_ADMIN_TOKEN` / `OOMOL_CONNECT_RUNTIME_TOKEN`) are long-lived,
+// Configured Node bearer secrets (`OOMOL_CONNECT_ADMIN_TOKEN` / `OOMOL_CONNECT_RUNTIME_TOKEN`) are long-lived,
 // so the credential is compared in constant time instead of with `===`, which short-circuits on the
 // first differing character and leaks how much of the token an attacker already guessed. Stored
 // runtime tokens already get the same treatment through `timingSafeEqual` on their hashes.
@@ -276,10 +290,6 @@ function normalizeToken(token: string | undefined): string | undefined {
 function readAuthScope(path: string): AuthScope {
   if (isConnectionManagementPath(path)) return "admin";
   return path === "/mcp" || path.startsWith("/mcp/") || path === "/v1" || path.startsWith("/v1/") ? "runtime" : "admin";
-}
-
-function canUseAdminAuth(path: string, method: string): boolean {
-  return method === "POST" && /^\/v1\/actions\/[^/]+$/.test(path);
 }
 
 function tokenForScope(options: LocalAuthOptions, scope: AuthScope): string | undefined {

@@ -18,8 +18,8 @@ through runtime options to admit, delay or deny each upstream HTTP attempt.
 | `OOMOL_CONNECT_DATABASE_CONNECT_TIMEOUT_MS` | `10000`                   | PostgreSQL connection timeout in milliseconds.                                                                                                                              |
 | `OOMOL_CONNECT_ENCRYPTION_KEY`              | unset                     | Encrypts credentials, Marketplace API keys, OAuth config, pending OAuth state, and completed idempotent Action responses. When unset, these values are stored in plaintext. |
 | `OOMOL_CONNECT_NEW_ENCRYPTION_KEY`          | unset                     | New key used by `runtime:data rotate-key`.                                                                                                                                  |
-| `OOMOL_CONNECT_ADMIN_TOKEN`                 | unset                     | Requires bearer-token auth for local admin API, docs, and web console.                                                                                                      |
-| `OOMOL_CONNECT_RUNTIME_TOKEN`               | unset                     | Optional bootstrap runtime bearer token for `/v1` and MCP callers.                                                                                                          |
+| `OOMOL_CONNECT_ADMIN_TOKEN`                 | unset                     | Node-only bearer token for the admin API, docs, and web console.                                                                                                            |
+| `OOMOL_CONNECT_RUNTIME_TOKEN`               | unset                     | Node-only optional bootstrap runtime bearer token for `/v1` and MCP callers.                                                                                                |
 | `OOMOL_CONNECT_ALLOWED_CUSTOM_OAUTH`        | unset                     | Enables connection-scoped OAuth apps for `*` or a comma-separated service list.                                                                                             |
 | `OOMOL_CONNECT_JWKS_URI`                    | unset                     | Node-only JWKS endpoint for validating runtime JWT access tokens.                                                                                                           |
 | `OOMOL_CONNECT_JWT_ISSUER`                  | unset                     | Expected `iss` claim for runtime JWT access tokens.                                                                                                                         |
@@ -71,7 +71,7 @@ A non-empty list grants exact stable, opaque IDs returned by the connection APIs
 default connection's ID if unnamed HTTP, MCP, or proxy requests should succeed. Virtual `no_auth`
 connections do not require a grant. Create requests may omit the field; updates must send
 `allowedConnections` so a PUT cannot drop an existing restriction.
-`OOMOL_CONNECT_RUNTIME_TOKEN` remains available for bootstrap scripts and backward compatibility.
+The Node server also accepts `OOMOL_CONNECT_RUNTIME_TOKEN` for bootstrap scripts and backward compatibility.
 Because the bootstrap token has no stored policy, its proxy access is controlled by the deployment
 and runtime rules, while its connection access remains unrestricted.
 
@@ -276,8 +276,9 @@ What changes operationally:
 
 ## Cloudflare Workers
 
-Cloudflare uses the same environment variable names for origin, static auth tokens, execution
-policy, transit file limits, and data encryption. The JWT settings above, `PORT`, `HOST`,
+Cloudflare uses the same environment variable names for origin, execution policy, transit file limits, and data encryption.
+The Worker uses Cloudflare Access for administration and issued runtime API keys for direct runtime access.
+The static bearer token settings, JWT settings above, `PORT`, `HOST`,
 `OOMOL_CONNECT_DATA_DIR`, `OOMOL_CONNECT_CATALOG_LAZY_SCHEMAS`, and
 `OOMOL_CONNECT_CATALOG_SCHEMA_CACHE_FILES` are Node-only settings.
 
@@ -298,8 +299,11 @@ transit-file TTL to a minimum of 60 seconds, and deletes expired files automatic
 Set secrets with Wrangler instead of committing them to config:
 
 ```bash
-npx wrangler secret put OOMOL_CONNECT_ADMIN_TOKEN --config wrangler.local.jsonc
+npx wrangler secret put OPEN_CONNECTOR_ACCESS_AUDIENCE --config wrangler.local.jsonc
 npx wrangler secret put OOMOL_CONNECT_ENCRYPTION_KEY --config wrangler.local.jsonc
 ```
+
+Set `OPEN_CONNECTOR_ACCESS_CONSOLE_ORIGIN` and `OPEN_CONNECTOR_ACCESS_TEAM_DOMAIN` in the Worker config.
+See [Cloudflare Access deployment](cloudflare-access.md).
 
 Persistent runtime tokens need explicit `allowedTriggers` grants for Provider Triggers; old and new tokens default to no Trigger access. Trigger grants do not require `allowedProxies`. Stateful subscriptions require a persistent runtime token; environment tokens and verified JWTs support only permitted `options` and `read`. See [Provider Triggers](runtime-api.md#provider-triggers) for lifecycle, cleanup, account recovery and token rotation. Workers must have scheduled maintenance enabled and catalog assets available when Trigger cleanup is pending.

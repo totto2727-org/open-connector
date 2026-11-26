@@ -52,6 +52,17 @@ See [runtime API](runtime-api.md#buffered-native-http-passthrough) and [Monid in
 - The configured D1 and storage identifiers are deployment-specific, not API credentials; secrets must continue to use the runtime's secret-management mechanism and must not be added to this file.
 - Retain this file when synchronizing upstream, and review new upstream binding or migration requirements before deploying.
 
+### Cloudflare Access for the Web Console
+
+The fork uses Cloudflare Access for the Worker Web Console and administrator APIs.
+The Worker-specific assertion verifier is in `src/server/cloudflare/access-admin.ts` and checks the console origin for mutations.
+The console issues action runs through `POST /api/actions/:actionId/run` with its Access session.
+The fork's `wrangler.jsonc` declares the protected console origin and runs the Worker before static assets so an alternate Worker URL cannot bypass the console check.
+Worker runtime endpoints require issued keys from D1, including when there are no keys.
+The Worker has no static admin or runtime bearer binding.
+Node retains the upstream bearer behavior.
+See [Cloudflare Access deployment](cloudflare-access.md) for rollout and verification.
+
 ### Cloudflare script selection
 
 - Source commit: [`0072c4301225a21a7308c5d22f77260a4db3886a`](https://github.com/totto2727-org/open-connector/commit/0072c4301225a21a7308c5d22f77260a4db3886a), `wip`.
