@@ -18,7 +18,9 @@ const authCookieMaxAgeMs = authCookieMaxAgeSeconds * 1000;
  */
 export interface LocalAuthOptions {
   adminToken?: string;
+  verifyAdminRequest?(request: Request): Promise<boolean>;
   runtimeToken?: string;
+  requireRuntimeAuth?: boolean;
   hasRuntimeTokens?(): Promise<boolean>;
   resolveRuntimeToken?(token: string): Promise<RuntimeGrant | undefined>;
   verifyRuntimeJwt?: RuntimeJwtVerifier;
@@ -48,7 +50,9 @@ export function createLocalAuthMiddleware(options: LocalAuthOptions): Middleware
   const runtimeToken = normalizeToken(options.runtimeToken);
   if (
     !adminToken &&
+    !options.verifyAdminRequest &&
     !runtimeToken &&
+    !options.requireRuntimeAuth &&
     !options.hasRuntimeTokens &&
     !options.resolveRuntimeToken &&
     !options.verifyRuntimeJwt
@@ -68,6 +72,7 @@ export function createLocalAuthMiddleware(options: LocalAuthOptions): Middleware
     if (
       isConnectionManagementPath(context.req.path) &&
       !adminToken &&
+      !options.verifyAdminRequest &&
       (runtimeToken ||
         options.verifyRuntimeJwt ||
         (options.hasRuntimeTokens ? await options.hasRuntimeTokens() : options.resolveRuntimeToken !== undefined))
@@ -87,12 +92,11 @@ export function createLocalAuthMiddleware(options: LocalAuthOptions): Middleware
       return;
     }
 
-    // Admin elevation for action runs is only available when an admin token is
-    // configured. Without that, a missing admin token must not open POST
-    // /v1/actions/* while runtime tokens/JWT are otherwise enforcing auth.
+    // The console runs actions through the existing runtime endpoint.
+    // The Worker verifier restricts Access to the console origin and checks the Origin header.
     if (
       canUseAdminAuth(context.req.path, context.req.method) &&
-      normalizeToken(options.adminToken) &&
+      (adminToken || options.verifyAdminRequest) &&
       (await hasValidToken(context, options, "admin"))
     ) {
       await installAdminCookieForBearer(context, options);
@@ -147,6 +151,9 @@ function isPublicPath(path: string, method: string): boolean {
 }
 
 export async function readLocalAuthSession(context: Context, options: LocalAuthOptions): Promise<LocalAuthSession> {
+  if (options.verifyAdminRequest) {
+    return { adminAuthConfigured: false, authenticated: await options.verifyAdminRequest(context.req.raw) };
+  }
   const adminToken = normalizeToken(options.adminToken);
   if (!adminToken) {
     return { adminAuthConfigured: false, authenticated: true };
@@ -180,11 +187,13 @@ async function installAdminCookieForBearer(context: Context, options: LocalAuthO
 }
 
 async function hasValidToken(context: Context, options: LocalAuthOptions, scope: AuthScope): Promise<boolean> {
+  if (scope === "admin" && options.verifyAdminRequest) return options.verifyAdminRequest(context.req.raw);
   const token = tokenForScope(options, scope);
   if (!token) {
     if (scope === "admin") {
       return true;
     }
+    if (options.requireRuntimeAuth) return hasValidRuntimeToken(context, options);
     const hasRuntimeTokens = options.hasRuntimeTokens
       ? await options.hasRuntimeTokens()
       : options.resolveRuntimeToken !== undefined;

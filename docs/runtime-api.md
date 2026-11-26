@@ -66,8 +66,10 @@ authentication coexists with existing runtime tokens and does not apply to admin
 [Configuration](configuration.md#jwt-access-tokens) for the resource-server scope and Node-only
 limitations.
 
-Admin endpoints under `/api/*`, `/docs`, and the Web Console use `OOMOL_CONNECT_ADMIN_TOKEN` when it
-is configured.
+The Node server uses `OOMOL_CONNECT_ADMIN_TOKEN` for administrator endpoints and the Web Console when configured.
+Cloudflare Workers use Cloudflare Access for administration, including connection management.
+External Worker runtime requests require an issued API key even when D1 has no keys.
+See [Cloudflare Workers configuration](cloudflare.md#configuration).
 
 ## Provider Triggers
 
