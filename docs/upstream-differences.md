@@ -19,6 +19,18 @@ The Monid and Projektor providers and the buffered native HTTP adapter are addit
 No pull request to the original repository is required for these fork-local changes.
 The virtual workspace maps this independent repository to `fork/app/open-connector/` and ignores its contents at the workspace root.
 
+## Cloudflare MCP OAuth backport
+
+The full upstream comparison baseline above is unchanged.
+The fork separately backports the Worker handler and consent UI from [`85a09391bb691ede5a2e71acef7b1ba175440754`](https://github.com/oomol-lab/open-connector/commit/85a09391bb691ede5a2e71acef7b1ba175440754), including [Worker MCP OAuth (#757)](https://github.com/oomol-lab/open-connector/pull/757), [consent scopes (#762)](https://github.com/oomol-lab/open-connector/pull/762), and the Worker policy fix in [`a037cebc9`](https://github.com/oomol-lab/open-connector/commit/a037cebc9).
+It uses the same locked `@cloudflare/workers-oauth-provider` version, `1.2.3`, without backporting the Node authorization server or its SQL migrations.
+The fork gates OAuth by a dedicated API origin, verifies the Cloudflare Access assertion on the consent route instead of asking for an administrator password, and uses the verified Access subject as the OAuth grant owner.
+Direct MCP authentication accepts individually issued D1 keys on both Worker hosts.
+OAuth access and refresh use a dedicated, revocable D1 key for each MCP connection.
+The existing Worker host uses direct bearer authentication for MCP.
+The fork's tracked Wrangler configuration adds the API custom domain, OAuth KV and the public-fetch compatibility flag required by CIMD.
+See [Cloudflare MCP OAuth rollout](cloudflare.md#mcp-oauth-on-the-fork).
+
 ## CI-only GitHub Actions
 
 The fork keeps `.github/workflows/ci.yml` active and unchanged.

@@ -17,6 +17,8 @@ import { D1RuntimeDatabase } from "./storage/d1/runtime-store.ts";
 import { SqliteD1Database } from "./storage/d1/test-database.ts";
 import { RuntimeTokenService } from "./storage/runtime-token-service.ts";
 
+vi.mock("cloudflare:workers", () => ({ WorkerEntrypoint: class {} }));
+
 const provider = {
   service: "example",
   displayName: "Example",
@@ -141,6 +143,238 @@ describe("cloudflare worker", () => {
       createExecutionContext(),
     );
     expect(missingAudience.status).toBe(401);
+  });
+
+  it("exposes OAuth machine routes publicly and limits browser consent to signed Access on the API origin", async () => {
+    const origin = "https://mcp-api.example.com";
+    const legacyOrigin = "https://connector.example.workers.dev";
+    const team = "mcp-test.cloudflareaccess.com";
+    const issuer = `https://${team}`;
+    const audience = "mcp-test-audience";
+    const redirectUri = "https://client.example.com/callback";
+    const clientDocument = "https://client.example.com/oauth-client.json";
+    const { privateKey, publicKey } = await generateKeyPair("RS256");
+    const signingHeader = { alg: "RS256", kid: "consent-key" };
+    const jwk = { ...(await exportJWK(publicKey)), kid: signingHeader.kid };
+    const sign = (aud = audience, iss = issuer, expiry = "5m", subject = "access-user", key = privateKey) =>
+      new SignJWT({ email: "operator@example.com" })
+        .setProtectedHeader(signingHeader)
+        .setIssuer(iss)
+        .setAudience(aud)
+        .setSubject(subject)
+        .setExpirationTime(expiry)
+        .sign(key);
+    const assertion = await sign();
+    const clientMetadata = {
+      client_name: "Test OAuth Client",
+      redirect_uris: [redirectUri],
+      token_endpoint_auth_method: "none",
+      grant_types: ["authorization_code", "refresh_token"],
+      response_types: ["code"],
+      scope: "mcp:access offline_access",
+    };
+    const fetchNetwork = vi.fn<typeof fetch>(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url === `${issuer}/cdn-cgi/access/certs`) return Response.json({ keys: [jwk] });
+      if (url === clientDocument) return Response.json({ ...clientMetadata, client_id: clientDocument });
+      throw new Error(`Unexpected network request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchNetwork);
+    vi.stubGlobal("Cloudflare", { compatibilityFlags: { global_fetch_strictly_public: true } });
+    const db = new SqliteD1Database();
+    const kv = new MemoryKVNamespace();
+    const tokens = new RuntimeTokenService(new D1RuntimeDatabase(db).runtimeTokenStore);
+    const oldToken = "old-shared-mcp-value";
+    const env = {
+      ...createEnv(),
+      DB: db,
+      OAUTH_KV: kv,
+      OPEN_CONNECTOR_MCP_OAUTH_ORIGIN: origin,
+      OPEN_CONNECTOR_ACCESS_TEAM_DOMAIN: team,
+      OPEN_CONNECTOR_ACCESS_AUDIENCE: audience,
+      OPEN_CONNECTOR_ACCESS_CONSOLE_ORIGIN: "https://mcp-console.example.com",
+      OOMOL_CONNECT_ORIGIN: legacyOrigin,
+      OOMOL_CONNECT_ENCRYPTION_KEY: "test-encryption-key",
+      OOMOL_CONNECT_ADMIN_TOKEN: "old-password",
+      // Simulate an obsolete binding still present during rollout.
+      OOMOL_CONNECT_RUNTIME_TOKEN: oldToken,
+    };
+    const request = (path: string, init?: RequestInit, requestOrigin = origin) =>
+      worker.fetch(new Request(`${requestOrigin}${path}`, init), env, createExecutionContext());
+    const rpc = (token?: string, requestOrigin = origin) =>
+      request(
+        "/mcp",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            accept: "application/json, text/event-stream",
+            ...(token ? { authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 1,
+            method: "initialize",
+            params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "test", version: "1" } },
+          }),
+        },
+        requestOrigin,
+      );
+    const form = (path: string, values: Record<string, string>, headers: HeadersInit = {}) =>
+      request(path, { method: "POST", headers, body: new URLSearchParams(values) });
+    const authorizePath = "/oauth/mcp/authorize";
+    const tokenPath = "/oauth/mcp/token";
+    const accessHeader = { "Cf-Access-Jwt-Assertion": assertion };
+    try {
+      const challenge = await rpc();
+      expect(challenge.status).toBe(401);
+      expect(challenge.headers.get("www-authenticate")).toContain(`${origin}/.well-known/oauth-protected-resource/mcp`);
+      await expect(rpc(undefined, legacyOrigin)).resolves.toMatchObject({ status: 401 });
+      await expect(rpc(oldToken)).resolves.toMatchObject({ status: 401 });
+      await expect(rpc(oldToken, legacyOrigin)).resolves.toMatchObject({ status: 401 });
+      for (const path of ["/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp"]) {
+        const metadata = await request(path);
+        expect(metadata.status).toBe(200);
+        expect(await metadata.json()).toMatchObject({ resource: `${origin}/mcp`, authorization_servers: [origin] });
+      }
+      const discovery = await request("/.well-known/oauth-authorization-server");
+      expect(discovery.status).toBe(200);
+      expect(await discovery.json()).toMatchObject({
+        issuer: origin,
+        authorization_endpoint: `${origin}${authorizePath}`,
+        token_endpoint: `${origin}${tokenPath}`,
+        registration_endpoint: `${origin}/oauth/mcp/register`,
+        client_id_metadata_document_supported: true,
+        code_challenge_methods_supported: ["S256"],
+      });
+      const registration = await request("/oauth/mcp/register", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(clientMetadata),
+      });
+      expect(registration.status).toBe(201);
+      const { client_id: registeredId } = await registration.json();
+      expect(registeredId).toEqual(expect.any(String));
+
+      await expect(request(authorizePath, { headers: accessHeader }, legacyOrigin)).resolves.toMatchObject({
+        status: 404,
+      });
+      await expect(
+        request(authorizePath, { method: "POST", headers: accessHeader }, legacyOrigin),
+      ).resolves.toMatchObject({ status: 404 });
+      await expect(request(authorizePath, { method: "HEAD", headers: accessHeader })).resolves.toMatchObject({
+        status: 405,
+      });
+      const otherKey = (await generateKeyPair("RS256")).privateKey;
+      for (const badToken of [
+        await sign(audience, issuer, "5m", "access-user", otherKey),
+        await sign("wrong-audience"),
+        await sign(audience, "https://wrong.example"),
+        await sign(audience, issuer, "-1m"),
+        await sign(audience, issuer, "5m", ""),
+      ]) {
+        await expect(
+          request(authorizePath, { headers: { "Cf-Access-Jwt-Assertion": badToken } }),
+        ).resolves.toMatchObject({ status: 401 });
+      }
+      const fakeCredentials = { authorization: `Bearer ${assertion}`, cookie: `CF_Authorization=${assertion}` };
+      await expect(request(authorizePath, { headers: fakeCredentials })).resolves.toMatchObject({ status: 401 });
+      await expect(
+        form(authorizePath, { decision: "approve", admin_token: "old-password" }, { ...fakeCredentials, origin }),
+      ).resolves.toMatchObject({ status: 401 });
+      const direct = await tokens.createToken("MCP CLI");
+      await expect(rpc(direct.token)).resolves.toMatchObject({ status: 200 });
+      await expect(rpc(direct.token, legacyOrigin)).resolves.toMatchObject({ status: 200 });
+      await tokens.revokeToken(direct.record.id);
+      await expect(rpc(direct.token)).resolves.toMatchObject({ status: 401 });
+      await expect(rpc(direct.token, legacyOrigin)).resolves.toMatchObject({ status: 401 });
+      await expect(request("/v1/health", { headers: accessHeader }, legacyOrigin)).resolves.toMatchObject({
+        status: 401,
+      });
+
+      const verifier = "c".repeat(43);
+      const pkce = Buffer.from(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))).toString(
+        "base64url",
+      );
+      const startConsent = async (clientId: string) => {
+        const params = new URLSearchParams({
+          client_id: clientId,
+          redirect_uri: redirectUri,
+          response_type: "code",
+          state: "session-state",
+          scope: clientMetadata.scope,
+          code_challenge: pkce,
+          code_challenge_method: "S256",
+          resource: `${origin}/mcp`,
+        });
+        const response = await request(`${authorizePath}?${params}`, { headers: accessHeader });
+        expect(response.status).toBe(200);
+        const html = await response.text();
+        expect(html).toContain("Test OAuth Client");
+        expect(html).not.toContain("admin_token");
+        const handle = html.match(/name="handle" value="([^"]+)"/)?.[1];
+        const cookie = response.headers.get("set-cookie")?.split(";", 1)[0];
+        if (!handle || !cookie) throw new Error("Missing browser consent transaction");
+        return { handle, cookie };
+      };
+
+      const denied = await startConsent(registeredId);
+      const decline = await form(
+        authorizePath,
+        { handle: denied.handle, decision: "deny" },
+        { ...accessHeader, cookie: denied.cookie, origin },
+      );
+      expect(decline.status).toBe(302);
+      expect(new URL(decline.headers.get("location") ?? "").searchParams.get("error")).toBe("access_denied");
+
+      for (const clientId of [registeredId, clientDocument]) {
+        const { handle, cookie } = await startConsent(clientId);
+        const approve = { handle, decision: "approve" };
+        await expect(
+          form(authorizePath, approve, { ...accessHeader, cookie, origin: legacyOrigin }),
+        ).resolves.toMatchObject({ status: 403 });
+        await expect(form(authorizePath, approve, { ...accessHeader, origin })).resolves.toMatchObject({ status: 400 });
+        const approval = await form(authorizePath, approve, { ...accessHeader, origin, cookie });
+        expect(approval.status).toBe(302);
+        expect((await kv.list({ prefix: "grant:access-user:" })).keys.length).toBeGreaterThan(0);
+        const redirect = new URL(approval.headers.get("location") ?? "");
+        expect(`${redirect.origin}${redirect.pathname}`).toBe(redirectUri);
+        expect(redirect.searchParams.get("state")).toBe("session-state");
+        const code = redirect.searchParams.get("code");
+        if (!code) throw new Error("Missing OAuth authorization code");
+        const exchange = {
+          grant_type: "authorization_code",
+          client_id: clientId,
+          redirect_uri: redirectUri,
+          code,
+          code_verifier: verifier,
+        };
+        await expect(form(tokenPath, { ...exchange, code_verifier: "x".repeat(43) })).resolves.toMatchObject({
+          status: 400,
+        });
+        const tokenResponse = await form(tokenPath, exchange);
+        expect(tokenResponse.status).toBe(200);
+        const { access_token: token, refresh_token: refresh } = await tokenResponse.json();
+        expect(refresh).toEqual(expect.any(String));
+        expect(token).not.toMatch(/^oct_/);
+        await expect(rpc(token)).resolves.toMatchObject({ status: 200 });
+        await expect(rpc(token, legacyOrigin)).resolves.toMatchObject({ status: 401 });
+        await expect(request("/v1/health", { headers: { authorization: `Bearer ${token}` } })).resolves.toMatchObject({
+          status: 401,
+        });
+        const [backing] = await tokens.listTokens();
+        if (!backing) throw new Error("Missing backing runtime credential");
+        expect(backing.name).toContain("Test OAuth Client");
+        await tokens.revokeToken(backing.id);
+        await expect(rpc(token)).resolves.toMatchObject({ status: 401 });
+        await expect(
+          form(tokenPath, { grant_type: "refresh_token", client_id: clientId, refresh_token: refresh }),
+        ).resolves.toMatchObject({ status: 400 });
+      }
+      expect(fetchNetwork.mock.calls.some(([url]) => String(url) === clientDocument)).toBe(true);
+    } finally {
+      db.close();
+    }
   });
 
   it("requires an issued key on runtime routes even when there are no stored keys or Access settings", async () => {
@@ -488,12 +722,21 @@ class MemoryKVNamespace implements KVNamespaceBinding {
 
   get(key: string, type: "text"): Promise<string | null>;
   get(key: string, type: "arrayBuffer"): Promise<ArrayBuffer | null>;
-  async get(key: string, type: "text" | "arrayBuffer"): Promise<string | ArrayBuffer | null> {
+  async get(key: string, type: "text" | "arrayBuffer" | { type: "json" } = "text"): Promise<unknown> {
     const stored = this.store.get(key);
     if (!stored) {
       return null;
     }
-    return type === "text" ? new TextDecoder().decode(stored.bytes) : stored.bytes.slice(0);
+    if (type === "arrayBuffer") return stored.bytes.slice(0);
+    const value = new TextDecoder().decode(stored.bytes);
+    return type === "text" ? value : JSON.parse(value);
+  }
+
+  async list({ prefix = "" }: { prefix?: string } = {}) {
+    return {
+      keys: [...this.store.keys()].filter((key) => key.startsWith(prefix)).map((name) => ({ name })),
+      list_complete: true,
+    };
   }
 
   async delete(key: string): Promise<void> {

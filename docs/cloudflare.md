@@ -155,6 +155,34 @@ The health endpoint should return `{"ok":true}`. Replace the example URL with th
 URL or your custom domain.
 Open the configured console origin to sign in with Cloudflare Access.
 
+## MCP OAuth on the fork
+
+Use `https://open-connector-api.totto2727.dev/mcp` to connect an OAuth-capable MCP client.
+The API origin publishes OAuth discovery and supports Dynamic Client Registration (DCR) and Client ID Metadata Documents (CIMD).
+Only the browser consent route at `/oauth/mcp/authorize` requires Cloudflare Access.
+Sign in with your passkey, then select **Allow access** or **Deny**.
+The MCP client uses the OAuth access token to call `/mcp` on the API origin.
+An individually issued runtime API key also gives direct bearer access to `/mcp` on either origin and to runtime endpoints under `/v1`.
+Keep `https://open-connector.totto2727.workers.dev` as the CLI endpoint.
+
+1. Apply the OpenConnector Access application from [infra PR #30](https://github.com/totto2727-org/infra/pull/30) before adding the API domain to the Worker.
+2. Set the shared `OPEN_CONNECTOR_ACCESS_AUDIENCE` Worker secret to the application's `openConnectorAccessAudience` Pulumi output.
+   Keep the existing `OOMOL_CONNECT_ENCRYPTION_KEY` secret.
+   `OPEN_CONNECTOR_MCP_OAUTH_ORIGIN` is separate from `OOMOL_CONNECT_ORIGIN`, which still controls provider OAuth and the general runtime origin.
+3. Run `npm run deploy:cloudflare` after reviewing the deployment.
+   The `OAUTH_KV` binding without an ID uses [Wrangler automatic provisioning](https://developers.cloudflare.com/workers/wrangler/configuration/#automatic-resource-provisioning).
+   Record the resulting namespace ID and reuse that namespace on subsequent deployments.
+   If there is already a namespace for MCP OAuth, set its existing ID in the binding before deploying rather than provisioning a replacement.
+   Replacing the namespace invalidates registered clients and grants.
+   Do not use the transit-file namespace for OAuth.
+   This backport needs no new D1 migration: the Worker keeps OAuth data in KV and backing runtime credentials in the existing D1 runtime-token table.
+
+After deployment, request `/.well-known/oauth-authorization-server` on the API origin without a browser session.
+It must return OAuth metadata rather than an Access login redirect.
+Connect from an OAuth client and verify that Access prompts for login only when the browser opens the authorization page.
+To revoke the MCP connection, delete its `MCP OAuth` runtime API key in the console.
+Verify that subsequent MCP calls and token refresh requests for that connection fail.
+
 ## Runtime Behavior
 
 The Cloudflare runtime serves catalog metadata, `/api` and `/v1` metadata endpoints, connections,

@@ -1,6 +1,7 @@
 import type { AssetsBinding, D1DatabaseBinding, KVNamespaceBinding, R2BucketBinding } from "./cloudflare-bindings.ts";
 
 export interface CloudflareEnv {
+  OAUTH_KV?: KVNamespaceBinding;
   DB: D1DatabaseBinding;
   TRANSIT_FILES: R2BucketBinding | KVNamespaceBinding;
   TRANSIT_FILES_BACKEND?: "r2" | "kv"; // New: used to distinguish backend type at runtime
@@ -8,6 +9,7 @@ export interface CloudflareEnv {
   OPEN_CONNECTOR_ACCESS_CONSOLE_ORIGIN?: string;
   OPEN_CONNECTOR_ACCESS_TEAM_DOMAIN?: string;
   OPEN_CONNECTOR_ACCESS_AUDIENCE?: string;
+  OPEN_CONNECTOR_MCP_OAUTH_ORIGIN?: string;
   OOMOL_CONNECT_ORIGIN?: string;
   OOMOL_CONNECT_ENCRYPTION_KEY?: string;
   OOMOL_CONNECT_ALLOWED_ACTIONS?: string;
